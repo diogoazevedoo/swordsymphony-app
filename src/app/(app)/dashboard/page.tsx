@@ -1,3 +1,4 @@
+import { AgentActivityCard } from '@/components/app/dashboard/agent-activity-card'
 import { DiagnosticMetricsCard } from '@/components/app/dashboard/diagnostic-metrics-card'
 import { DashboardHeader } from '@/components/app/dashboard/header'
 import { QuickActionsCard } from '@/components/app/dashboard/quick-actions-card'
@@ -17,8 +18,9 @@ export default function Dashboard() {
         <QuickActionsCard className="md:col-span-2 lg:col-span-1" />
         <RecentCasesCard className="md:col-span-2 lg:col-span-1" />
       </div>
-      <div className="mt-4">
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
         <DiagnosticMetricsCard />
+        <AgentActivityCard />
       </div>
     </DashboardShell>
   )
