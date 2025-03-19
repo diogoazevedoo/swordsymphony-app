@@ -22,7 +22,7 @@ export function UserNav() {
           className="relative h-8 w-8 rounded-full border-0 hover:bg-muted/30"
         >
           <Avatar className="h-8 w-8 transition-all">
-            <AvatarImage src="/placeholder-avatar.jpg" alt="Avatar" />
+            <AvatarImage alt="Avatar" />
             <AvatarFallback className="text-xs">DA</AvatarFallback>
           </Avatar>
         </Button>
