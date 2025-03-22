@@ -16,7 +16,7 @@ export function useAgents() {
     queryKey: ['agents'],
     queryFn: async (): Promise<Agent[]> => {
       try {
-        const response = await api.get('/admin/agents')
+        const response = await api.get('/management/agents')
 
         if (
           response.data &&

@@ -10,23 +10,44 @@ export interface AgentActivity {
   message_type: string
 }
 
-const getActionFromMessageType = (messageType: string): string => {
-  switch (messageType) {
-    case 'task_assignment':
-      return 'Started processing patient data'
-    case 'processed_data':
-      return 'Completed data processing'
-    case 'diagnosis_results':
-      return 'Generated diagnostic assessment'
-    case 'treatment_plan':
-      return 'Created treatment plan'
-    case 'status_update':
-      return 'Updated status'
-    case 'task_complete':
-      return 'Completed task'
-    default:
-      return 'Performed action'
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const extractAgentActivities = (message: any): AgentActivity[] => {
+  const activities: AgentActivity[] = []
+
+  if (message.message_type === 'task_assignment') {
+    activities.push({
+      agent_id: message.recipient,
+      agent_name: message.recipient.replace('_agent', '').replace('_', ' '),
+      action: 'Received task assignment',
+      timestamp: message.timestamp,
+      case_id: message.content?.task_id || 'Unknown',
+      message_type: message.message_type,
+    })
   }
+
+  if (message.content?.data) {
+    const data = message.content.data
+    Object.keys(data).forEach((key) => {
+      if (
+        key.startsWith('step.') &&
+        data[key]?.agent_type &&
+        data[key]?.status
+      ) {
+        activities.push({
+          agent_id: data[key].agent_type,
+          agent_name: data[key].agent_type
+            .replace('_agent', '')
+            .replace('_', ' '),
+          action: `${data[key].status === 'completed' ? 'Completed' : 'Processing'} ${key.replace('step.', '')}`,
+          timestamp: message.timestamp,
+          case_id: data[key].task_id || message.content?.task_id || 'Unknown',
+          message_type: data[key].status || 'status_update',
+        })
+      }
+    })
+  }
+
+  return activities
 }
 
 export function useAgentActivities() {
@@ -35,21 +56,24 @@ export function useAgentActivities() {
     queryFn: async (): Promise<{ activities: AgentActivity[] }> => {
       try {
         const response = await api.get('/messages')
+        console.log('Raw messages data:', response.data)
         const messages = response.data || []
 
-        const activities: AgentActivity[] = messages
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .filter((msg: any) => msg.sender !== 'orchestrator')
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .map((msg: any) => ({
-            agent_id: msg.sender,
-            agent_name: msg.sender_name,
-            action: getActionFromMessageType(msg.message_type),
-            timestamp: msg.timestamp,
-            case_id: msg.content?.task_id || 'Unknown',
-            message_type: msg.message_type,
-          }))
-          .slice(0, 5)
+        let allActivities: AgentActivity[] = []
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        messages.forEach((msg: any) => {
+          const msgActivities = extractAgentActivities(msg)
+          allActivities = [...allActivities, ...msgActivities]
+        })
+
+        allActivities.sort((a, b) => {
+          return (
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          )
+        })
+
+        const activities = allActivities.slice(0, 5)
+        console.log('Processed activities:', activities)
 
         return { activities }
       } catch (error) {

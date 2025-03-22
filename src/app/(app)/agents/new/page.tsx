@@ -40,7 +40,6 @@ export default function NewAgentPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeTab, setActiveTab] = useState('basic')
 
-  // Define interfaces for type safety
   interface SchemaProperty {
     type: string
     items?: {
@@ -165,7 +164,6 @@ export default function NewAgentPage() {
     }))
   }
 
-  // Handle input schema changes
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const updateInput = (index: number, field: string, value: any) => {
     setFormData((prev) => {
@@ -204,7 +202,6 @@ export default function NewAgentPage() {
     })
   }
 
-  // Handle output schema changes
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const updateOutput = (index: number, field: string, value: any) => {
     setFormData((prev) => {
@@ -248,7 +245,6 @@ export default function NewAgentPage() {
     setIsSubmitting(true)
 
     try {
-      // Format the data to match the expected API format
       const agentConfig = {
         id: formData.id,
         type: formData.type,
@@ -261,17 +257,15 @@ export default function NewAgentPage() {
         outputs: formData.outputs,
       }
 
-      const response = await api.post('/admin/agents', agentConfig)
+      const response = await api.post('/management/agents', agentConfig)
 
       if (response.data && response.data.success) {
         router.push(`/agents/${formData.id}`)
       } else {
         console.error('Failed to create agent:', response.data)
-        // Show error message
       }
     } catch (error) {
       console.error('Error creating agent:', error)
-      // Show error message
     } finally {
       setIsSubmitting(false)
     }
@@ -672,7 +666,6 @@ export default function NewAgentPage() {
                         onChange={(value) => {
                           try {
                             const schema = JSON.parse(value)
-                            // Ensure schema has the correct structure
                             if (typeof schema === 'object' && schema !== null) {
                               if (!schema.type) {
                                 schema.type = 'object'
@@ -687,8 +680,6 @@ export default function NewAgentPage() {
                             }
                           } catch (err) {
                             // Invalid JSON, don't update
-                            // We still update the raw text in the editor
-                            // but don't update the schema object
                           }
                         }}
                         language="json"
@@ -784,7 +775,6 @@ export default function NewAgentPage() {
                         onChange={(value) => {
                           try {
                             const schema = JSON.parse(value)
-                            // Ensure schema has the correct structure
                             if (typeof schema === 'object' && schema !== null) {
                               if (!schema.type) {
                                 schema.type = 'object'
@@ -799,8 +789,6 @@ export default function NewAgentPage() {
                             }
                           } catch (err) {
                             // Invalid JSON, don't update
-                            // We still update the raw text in the editor
-                            // but don't update the schema object
                           }
                         }}
                         language="json"

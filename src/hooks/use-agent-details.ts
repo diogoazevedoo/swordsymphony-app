@@ -41,7 +41,7 @@ export function useAgentDetail(agentId: string) {
     queryKey: ['agent', agentId],
     queryFn: async (): Promise<AgentDetail> => {
       try {
-        const response = await api.get(`/admin/agents/${agentId}`)
+        const response = await api.get(`/management/agents/${agentId}`)
 
         if (response.data && response.data.success && response.data.data) {
           return response.data.data
