@@ -7,6 +7,7 @@ import ReactFlow, {
   Background,
   MarkerType,
   Panel,
+  BackgroundVariant,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { WorkflowNode } from './workflow-node'
@@ -166,7 +167,12 @@ export function WorkflowDiagram({ workflow }: WorkflowDiagramProps) {
             showInteractive={false}
             className="bg-background border shadow-sm"
           />
-          <Background color="#f0f0f0" gap={16} size={1} />
+          <Background
+            variant={BackgroundVariant.Dots}
+            color="#ddd"
+            gap={12}
+            size={1}
+          />
         </ReactFlow>
       </div>
     </ReactFlowProvider>

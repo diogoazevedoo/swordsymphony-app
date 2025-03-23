@@ -18,6 +18,7 @@ import ReactFlow, {
   applyEdgeChanges,
   MarkerType,
   Panel,
+  BackgroundVariant,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { Card } from '@/components/ui/card'
@@ -450,7 +451,12 @@ export function WorkflowBuilder({
                   showInteractive={false}
                   className="bg-background border shadow-sm"
                 />
-                <Background color="#f0f0f0" gap={16} size={1} />
+                <Background
+                  variant={BackgroundVariant.Dots}
+                  color="#ddd"
+                  gap={12}
+                  size={1}
+                />
               </ReactFlow>
             </ReactFlowProvider>
           </div>

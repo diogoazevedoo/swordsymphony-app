@@ -56,7 +56,6 @@ export function useAgentActivities() {
     queryFn: async (): Promise<{ activities: AgentActivity[] }> => {
       try {
         const response = await api.get('/messages')
-        console.log('Raw messages data:', response.data)
         const messages = response.data || []
 
         let allActivities: AgentActivity[] = []
@@ -73,7 +72,6 @@ export function useAgentActivities() {
         })
 
         const activities = allActivities.slice(0, 5)
-        console.log('Processed activities:', activities)
 
         return { activities }
       } catch (error) {
