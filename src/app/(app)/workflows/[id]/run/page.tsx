@@ -40,7 +40,7 @@ import Link from 'next/link'
 import { useWorkflow } from '@/hooks/use-workflow'
 import { useCases } from '@/hooks/use-cases'
 import { api } from '@/lib/api'
-import { cn } from '@/lib/utils'
+import { cn, safeGet } from '@/lib/utils'
 import {
   Select,
   SelectContent,
@@ -80,10 +80,50 @@ export default function WorkflowRunPage() {
     setSelectedCaseId(caseId)
   }
 
-  const handleRunWorkflow = async () => {
-    if (!selectedCaseId) {
-      return
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const processResults = (rawResults: any) => {
+    if (!rawResults) return null
+
+    const processedResults = { ...rawResults }
+
+    // Normalize diagnosis data
+    if (!safeGet(processedResults, 'step.diagnosis')) {
+      // Check if diagnosis exists at root level
+      const diagnosis = safeGet(processedResults, 'diagnosis')
+      if (diagnosis) {
+        processedResults['step.diagnosis'] = { diagnosis }
+      } else {
+        // Search for diagnosis data within any object property
+        Object.keys(processedResults).forEach((key) => {
+          const value = processedResults[key]
+          if (typeof value === 'object' && value && value.potential_diagnoses) {
+            processedResults['step.diagnosis'] = { diagnosis: value }
+          }
+        })
+      }
     }
+
+    // Normalize treatment data
+    if (!safeGet(processedResults, 'step.treatment')) {
+      const treatment = safeGet(processedResults, 'treatment_plan')
+      if (treatment) {
+        processedResults['step.treatment'] = { treatment_plan: treatment }
+      } else {
+        // Search for treatment data
+        Object.keys(processedResults).forEach((key) => {
+          const value = processedResults[key]
+          if (typeof value === 'object' && value && value.recommendations) {
+            processedResults['step.treatment'] = { treatment_plan: value }
+          }
+        })
+      }
+    }
+
+    return processedResults
+  }
+
+  const handleRunWorkflow = async () => {
+    if (!selectedCaseId) return
 
     setStatus('running')
     setRunningSteps([workflow?.steps[0]?.id || ''])
@@ -94,27 +134,50 @@ export default function WorkflowRunPage() {
     try {
       const response = await api.post(
         `/management/workflows/${workflowId}/instances`,
-        {
-          patient_data: cases?.find((c) => c.id === selectedCaseId),
-        },
+        { patient_data: cases?.find((c) => c.id === selectedCaseId) },
       )
 
-      if (response.data && response.data.success) {
-        setInstanceId(response.data.data.instance_id)
+      if (response.data?.success) {
+        const instanceId = response.data.data.instance_id
+        setInstanceId(instanceId)
 
-        const intervalId = setInterval(async () => {
+        // Set up adaptive polling
+        let pollInterval = 2000 // Start with 2 seconds
+        const maxPollInterval = 10000 // Max 10 seconds
+        const backoffFactor = 1.2
+        let consecutiveErrors = 0
+
+        const pollInstance = async () => {
           try {
             const instanceResponse = await api.get(
-              `/management/workflow-instances/${response.data.data.instance_id}`,
+              `/management/workflow-instances/${instanceId}`,
             )
 
-            if (instanceResponse.data && instanceResponse.data.success) {
+            if (instanceResponse.data?.success) {
               const instance = instanceResponse.data.data
+              consecutiveErrors = 0
 
-              setCompletedSteps(instance.completed_steps || [])
+              // Check for changes in completed steps
+              const newCompletedSteps = instance.completed_steps || []
+              if (
+                JSON.stringify(newCompletedSteps) ===
+                JSON.stringify(completedSteps)
+              ) {
+                // No progress, increase polling interval
+                pollInterval = Math.min(
+                  pollInterval * backoffFactor,
+                  maxPollInterval,
+                )
+              } else {
+                // Progress being made, reset to more frequent polling
+                pollInterval = 2000
+              }
 
+              setCompletedSteps(newCompletedSteps)
+
+              // Determine which steps are currently running
               const firstIncompleteStepIndex = workflow?.steps.findIndex(
-                (step) => !instance.completed_steps.includes(step.id),
+                (step) => !newCompletedSteps.includes(step.id),
               )
 
               if (
@@ -125,7 +188,7 @@ export default function WorkflowRunPage() {
                   workflow?.steps[firstIncompleteStepIndex]
                 if (
                   firstIncompleteStep &&
-                  instance.current_steps.includes(firstIncompleteStep.id)
+                  instance.current_steps?.includes(firstIncompleteStep.id)
                 ) {
                   setRunningSteps([firstIncompleteStep.id])
                 } else {
@@ -135,21 +198,56 @@ export default function WorkflowRunPage() {
                 setRunningSteps([])
               }
 
+              // Check workflow completion
               if (instance.status === 'completed') {
                 setStatus('completed')
-                setResults(instance.output)
-                clearInterval(intervalId)
+
+                // Try fetching detailed results
+                try {
+                  const resultsResponse = await api.get(
+                    `/results/${selectedCaseId}`,
+                  )
+                  if (resultsResponse.data) {
+                    setResults(processResults(resultsResponse.data))
+                  } else {
+                    setResults(processResults(instance.output))
+                  }
+                } catch (resultError) {
+                  console.error('Error fetching results:', resultError)
+                  setResults(processResults(instance.output))
+                }
+
+                return // Stop polling
               } else if (instance.status === 'failed') {
                 setStatus('error')
-                clearInterval(intervalId)
+                return // Stop polling
               }
+
+              // Continue polling
+              setTimeout(pollInstance, pollInterval)
             }
           } catch (error) {
             console.error('Error polling workflow instance:', error)
-          }
-        }, 2000)
 
-        return () => clearInterval(intervalId)
+            // Backoff on errors
+            consecutiveErrors++
+            pollInterval = Math.min(
+              pollInterval * (1 + consecutiveErrors * 0.5),
+              maxPollInterval,
+            )
+
+            // Stop polling after too many errors
+            if (consecutiveErrors > 5) {
+              setStatus('error')
+              return
+            }
+
+            setTimeout(pollInstance, pollInterval)
+          }
+        }
+
+        // Start polling after initial delay
+        setTimeout(pollInstance, 1000)
       } else {
         throw new Error(
           response.data?.error?.message || 'Failed to start workflow',
@@ -556,17 +654,27 @@ export default function WorkflowRunPage() {
                                 Potential Diagnoses
                               </h4>
                               <div className="flex flex-wrap gap-2">
-                                {results[
-                                  'step.diagnosis'
-                                ]?.diagnosis?.potential_diagnoses?.map(
-                                  (diagnosis: string, index: number) => (
+                                {safeGet(
+                                  results,
+                                  'step.diagnosis.diagnosis.potential_diagnoses',
+                                  [],
+                                ).length > 0 ? (
+                                  safeGet(
+                                    results,
+                                    'step.diagnosis.diagnosis.potential_diagnoses',
+                                    [],
+                                  ).map((diagnosis: string, index: number) => (
                                     <Badge
                                       key={index}
                                       className="bg-primary/10 text-primary hover:bg-primary/20 border-0"
                                     >
                                       {diagnosis}
                                     </Badge>
-                                  ),
+                                  ))
+                                ) : (
+                                  <p className="text-sm text-muted-foreground">
+                                    No diagnoses available
+                                  </p>
                                 )}
                               </div>
                             </div>
@@ -579,15 +687,21 @@ export default function WorkflowRunPage() {
                               <div className="flex items-center gap-2">
                                 <Progress
                                   value={
-                                    results['step.diagnosis']?.diagnosis
-                                      ?.confidence * 100
+                                    safeGet(
+                                      results,
+                                      'step.diagnosis.diagnosis.confidence',
+                                      0,
+                                    ) * 100
                                   }
                                   className="h-2 flex-1"
                                 />
                                 <span className="text-sm font-medium">
                                   {Math.round(
-                                    results['step.diagnosis']?.diagnosis
-                                      ?.confidence * 100,
+                                    safeGet(
+                                      results,
+                                      'step.diagnosis.diagnosis.confidence',
+                                      0,
+                                    ) * 100,
                                   )}
                                   %
                                 </span>
@@ -606,17 +720,26 @@ export default function WorkflowRunPage() {
                                 </AccordionTrigger>
                                 <AccordionContent>
                                   <ul className="space-y-2 text-sm">
-                                    {results[
-                                      'step.diagnosis'
-                                    ]?.diagnosis?.reasoning?.map(
-                                      (reason: string, index: number) => (
-                                        <li
-                                          key={index}
-                                          className="pl-4 border-l-2 border-primary/20"
-                                        >
-                                          {reason}
-                                        </li>
-                                      ),
+                                    {safeGet(
+                                      results,
+                                      'step.diagnosis.diagnosis.reasoning',
+                                      [],
+                                    ).map((reason: string, index: number) => (
+                                      <li
+                                        key={index}
+                                        className="pl-4 border-l-2 border-primary/20"
+                                      >
+                                        {reason}
+                                      </li>
+                                    ))}
+                                    {safeGet(
+                                      results,
+                                      'step.diagnosis.diagnosis.reasoning',
+                                      [],
+                                    ).length === 0 && (
+                                      <li className="text-muted-foreground">
+                                        No reasoning data available
+                                      </li>
                                     )}
                                   </ul>
                                 </AccordionContent>
@@ -629,10 +752,16 @@ export default function WorkflowRunPage() {
                                 Risk Factors
                               </h4>
                               <div className="flex flex-wrap gap-2">
-                                {results[
-                                  'step.diagnosis'
-                                ]?.diagnosis?.risk_factors?.map(
-                                  (factor: string, index: number) => (
+                                {safeGet(
+                                  results,
+                                  'step.diagnosis.diagnosis.risk_factors',
+                                  [],
+                                ).length > 0 ? (
+                                  safeGet(
+                                    results,
+                                    'step.diagnosis.diagnosis.risk_factors',
+                                    [],
+                                  ).map((factor: string, index: number) => (
                                     <Badge
                                       key={index}
                                       variant="outline"
@@ -640,7 +769,11 @@ export default function WorkflowRunPage() {
                                     >
                                       {factor}
                                     </Badge>
-                                  ),
+                                  ))
+                                ) : (
+                                  <span className="text-sm text-muted-foreground">
+                                    No risk factors identified
+                                  </span>
                                 )}
                               </div>
                             </div>
@@ -651,10 +784,16 @@ export default function WorkflowRunPage() {
                                 Recommended Tests
                               </h4>
                               <ul className="space-y-1 text-sm">
-                                {results[
-                                  'step.diagnosis'
-                                ]?.diagnosis?.recommended_tests?.map(
-                                  (test: string, index: number) => (
+                                {safeGet(
+                                  results,
+                                  'step.diagnosis.diagnosis.recommended_tests',
+                                  [],
+                                ).length > 0 ? (
+                                  safeGet(
+                                    results,
+                                    'step.diagnosis.diagnosis.recommended_tests',
+                                    [],
+                                  ).map((test: string, index: number) => (
                                     <li
                                       key={index}
                                       className="flex items-center gap-2"
@@ -662,7 +801,11 @@ export default function WorkflowRunPage() {
                                       <Beaker className="h-3.5 w-3.5 text-muted-foreground" />
                                       {test}
                                     </li>
-                                  ),
+                                  ))
+                                ) : (
+                                  <li className="text-muted-foreground">
+                                    No tests recommended
+                                  </li>
                                 )}
                               </ul>
                             </div>
@@ -689,17 +832,27 @@ export default function WorkflowRunPage() {
                                 Recommendations
                               </h4>
                               <ul className="space-y-1 text-sm">
-                                {results[
-                                  'step.treatment'
-                                ]?.treatment_plan?.recommendations?.map(
-                                  (rec: string, index: number) => (
+                                {safeGet(
+                                  results,
+                                  'step.treatment.treatment_plan.recommendations',
+                                  [],
+                                ).length > 0 ? (
+                                  safeGet(
+                                    results,
+                                    'step.treatment.treatment_plan.recommendations',
+                                    [],
+                                  ).map((rec: string, index: number) => (
                                     <li
                                       key={index}
                                       className="pl-4 border-l-2 border-primary/20"
                                     >
                                       {rec}
                                     </li>
-                                  ),
+                                  ))
+                                ) : (
+                                  <li className="text-muted-foreground">
+                                    No treatment recommendations available
+                                  </li>
                                 )}
                               </ul>
                             </div>
@@ -719,17 +872,27 @@ export default function WorkflowRunPage() {
                                 </AccordionTrigger>
                                 <AccordionContent>
                                   <ul className="space-y-2 text-sm">
-                                    {results[
-                                      'step.treatment'
-                                    ]?.treatment_plan?.medications?.map(
-                                      (med: string, index: number) => (
+                                    {safeGet(
+                                      results,
+                                      'step.treatment.treatment_plan.medications',
+                                      [],
+                                    ).length > 0 ? (
+                                      safeGet(
+                                        results,
+                                        'step.treatment.treatment_plan.medications',
+                                        [],
+                                      ).map((med: string, index: number) => (
                                         <li
                                           key={index}
                                           className="p-2 bg-muted/20 rounded-md"
                                         >
                                           {med}
                                         </li>
-                                      ),
+                                      ))
+                                    ) : (
+                                      <li className="text-muted-foreground">
+                                        No medications prescribed
+                                      </li>
                                     )}
                                   </ul>
                                 </AccordionContent>
@@ -751,10 +914,16 @@ export default function WorkflowRunPage() {
                                 </AccordionTrigger>
                                 <AccordionContent>
                                   <ul className="space-y-1 text-sm">
-                                    {results[
-                                      'step.treatment'
-                                    ]?.treatment_plan?.lifestyle_changes?.map(
-                                      (change: string, index: number) => (
+                                    {safeGet(
+                                      results,
+                                      'step.treatment.treatment_plan.lifestyle_changes',
+                                      [],
+                                    ).length > 0 ? (
+                                      safeGet(
+                                        results,
+                                        'step.treatment.treatment_plan.lifestyle_changes',
+                                        [],
+                                      ).map((change: string, index: number) => (
                                         <li
                                           key={index}
                                           className="flex items-start gap-2"
@@ -766,7 +935,11 @@ export default function WorkflowRunPage() {
                                           </div>
                                           {change}
                                         </li>
-                                      ),
+                                      ))
+                                    ) : (
+                                      <li className="text-muted-foreground">
+                                        No lifestyle changes recommended
+                                      </li>
                                     )}
                                   </ul>
                                 </AccordionContent>
@@ -788,18 +961,30 @@ export default function WorkflowRunPage() {
                                 </AccordionTrigger>
                                 <AccordionContent>
                                   <ul className="space-y-1 text-sm">
-                                    {results[
-                                      'step.treatment'
-                                    ]?.treatment_plan?.follow_up?.map(
-                                      (followup: string, index: number) => (
-                                        <li
-                                          key={index}
-                                          className="flex items-start gap-2"
-                                        >
-                                          <Clipboard className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
-                                          {followup}
-                                        </li>
-                                      ),
+                                    {safeGet(
+                                      results,
+                                      'step.treatment.treatment_plan.follow_up',
+                                      [],
+                                    ).length > 0 ? (
+                                      safeGet(
+                                        results,
+                                        'step.treatment.treatment_plan.follow_up',
+                                        [],
+                                      ).map(
+                                        (followup: string, index: number) => (
+                                          <li
+                                            key={index}
+                                            className="flex items-start gap-2"
+                                          >
+                                            <Clipboard className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                                            {followup}
+                                          </li>
+                                        ),
+                                      )
+                                    ) : (
+                                      <li className="text-muted-foreground">
+                                        No follow-up information available
+                                      </li>
                                     )}
                                   </ul>
                                 </AccordionContent>
@@ -814,10 +999,16 @@ export default function WorkflowRunPage() {
                               </h4>
                               <div className="p-3 border border-destructive/20 bg-destructive/5 rounded-md">
                                 <ul className="space-y-1 text-sm">
-                                  {results[
-                                    'step.treatment'
-                                  ]?.treatment_plan?.warnings?.map(
-                                    (warning: string, index: number) => (
+                                  {safeGet(
+                                    results,
+                                    'step.treatment.treatment_plan.warnings',
+                                    [],
+                                  ).length > 0 ? (
+                                    safeGet(
+                                      results,
+                                      'step.treatment.treatment_plan.warnings',
+                                      [],
+                                    ).map((warning: string, index: number) => (
                                       <li
                                         key={index}
                                         className="flex items-start gap-2"
@@ -825,7 +1016,11 @@ export default function WorkflowRunPage() {
                                         <BadgeAlert className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />
                                         {warning}
                                       </li>
-                                    ),
+                                    ))
+                                  ) : (
+                                    <li className="text-muted-foreground">
+                                      No specific warnings
+                                    </li>
                                   )}
                                 </ul>
                               </div>
@@ -846,21 +1041,33 @@ export default function WorkflowRunPage() {
                                 </AccordionTrigger>
                                 <AccordionContent>
                                   <ul className="space-y-1 text-sm">
-                                    {results[
-                                      'step.treatment'
-                                    ]?.treatment_plan?.contraindications?.map(
-                                      (
-                                        contraindication: string,
-                                        index: number,
-                                      ) => (
-                                        <li
-                                          key={index}
-                                          className="flex items-start gap-2"
-                                        >
-                                          <AlertCircle className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
-                                          {contraindication}
-                                        </li>
-                                      ),
+                                    {safeGet(
+                                      results,
+                                      'step.treatment.treatment_plan.contraindications',
+                                      [],
+                                    ).length > 0 ? (
+                                      safeGet(
+                                        results,
+                                        'step.treatment.treatment_plan.contraindications',
+                                        [],
+                                      ).map(
+                                        (
+                                          contraindication: string,
+                                          index: number,
+                                        ) => (
+                                          <li
+                                            key={index}
+                                            className="flex items-start gap-2"
+                                          >
+                                            <AlertCircle className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+                                            {contraindication}
+                                          </li>
+                                        ),
+                                      )
+                                    ) : (
+                                      <li className="text-muted-foreground">
+                                        No contraindications listed
+                                      </li>
                                     )}
                                   </ul>
                                 </AccordionContent>
