@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
 import { useState } from 'react'
@@ -71,7 +72,6 @@ export default function WorkflowRunPage() {
   >('idle')
   const [runningSteps, setRunningSteps] = useState<string[]>([])
   const [completedSteps, setCompletedSteps] = useState<string[]>([])
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [results, setResults] = useState<any>(null)
   const [activeTab, setActiveTab] = useState('setup')
   const [, setInstanceId] = useState<string | null>(null)
@@ -80,20 +80,16 @@ export default function WorkflowRunPage() {
     setSelectedCaseId(caseId)
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const processResults = (rawResults: any) => {
     if (!rawResults) return null
 
     const processedResults = { ...rawResults }
 
-    // Normalize diagnosis data
     if (!safeGet(processedResults, 'step.diagnosis')) {
-      // Check if diagnosis exists at root level
       const diagnosis = safeGet(processedResults, 'diagnosis')
       if (diagnosis) {
         processedResults['step.diagnosis'] = { diagnosis }
       } else {
-        // Search for diagnosis data within any object property
         Object.keys(processedResults).forEach((key) => {
           const value = processedResults[key]
           if (typeof value === 'object' && value && value.potential_diagnoses) {
@@ -103,13 +99,11 @@ export default function WorkflowRunPage() {
       }
     }
 
-    // Normalize treatment data
     if (!safeGet(processedResults, 'step.treatment')) {
       const treatment = safeGet(processedResults, 'treatment_plan')
       if (treatment) {
         processedResults['step.treatment'] = { treatment_plan: treatment }
       } else {
-        // Search for treatment data
         Object.keys(processedResults).forEach((key) => {
           const value = processedResults[key]
           if (typeof value === 'object' && value && value.recommendations) {
@@ -141,13 +135,14 @@ export default function WorkflowRunPage() {
         const instanceId = response.data.data.instance_id
         setInstanceId(instanceId)
 
-        // Set up adaptive polling
-        let pollInterval = 2000 // Start with 2 seconds
-        const maxPollInterval = 10000 // Max 10 seconds
+        let pollInterval = 2000
+        const maxPollInterval = 10000
         const backoffFactor = 1.2
         let consecutiveErrors = 0
 
         const pollInstance = async () => {
+          const timestamp = Date.now()
+
           try {
             const instanceResponse = await api.get(
               `/management/workflow-instances/${instanceId}`,
@@ -157,40 +152,57 @@ export default function WorkflowRunPage() {
               const instance = instanceResponse.data.data
               consecutiveErrors = 0
 
-              // Check for changes in completed steps
+              console.log('Workflow instance debug:', {
+                timestamp,
+                instanceId,
+                current_steps: instance.current_steps || [],
+                completed_steps: instance.completed_steps || [],
+                newCompletedSteps: instance.completed_steps || [],
+                runningSteps,
+                status: instance.status,
+                workflow_steps: workflow?.steps.map((s) => s.id),
+              })
+
               const newCompletedSteps = instance.completed_steps || []
               if (
                 JSON.stringify(newCompletedSteps) ===
                 JSON.stringify(completedSteps)
               ) {
-                // No progress, increase polling interval
                 pollInterval = Math.min(
                   pollInterval * backoffFactor,
                   maxPollInterval,
                 )
               } else {
-                // Progress being made, reset to more frequent polling
                 pollInterval = 2000
               }
 
               setCompletedSteps(newCompletedSteps)
 
-              // Determine which steps are currently running
               const firstIncompleteStepIndex = workflow?.steps.findIndex(
                 (step) => !newCompletedSteps.includes(step.id),
               )
 
-              if (
-                firstIncompleteStepIndex !== -1 &&
-                firstIncompleteStepIndex !== undefined
+              if (instance.current_steps && instance.current_steps.length > 0) {
+                console.log(
+                  'Using server-provided current steps:',
+                  instance.current_steps,
+                )
+                setRunningSteps(instance.current_steps)
+              } else if (
+                instance.status === 'running' ||
+                instance.status === 'started'
               ) {
-                const firstIncompleteStep =
-                  workflow?.steps[firstIncompleteStepIndex]
                 if (
-                  firstIncompleteStep &&
-                  instance.current_steps?.includes(firstIncompleteStep.id)
+                  firstIncompleteStepIndex !== -1 &&
+                  firstIncompleteStepIndex !== undefined
                 ) {
-                  setRunningSteps([firstIncompleteStep.id])
+                  const firstIncompleteStep =
+                    workflow?.steps[firstIncompleteStepIndex]
+                  console.log(
+                    'Inferring running step:',
+                    firstIncompleteStep?.id,
+                  )
+                  setRunningSteps([firstIncompleteStep!.id])
                 } else {
                   setRunningSteps([])
                 }
@@ -198,11 +210,18 @@ export default function WorkflowRunPage() {
                 setRunningSteps([])
               }
 
-              // Check workflow completion
-              if (instance.status === 'completed') {
-                setStatus('completed')
+              setStatus((prevStatus: string) => {
+                if (prevStatus === 'running' && instance.status === 'running') {
+                  setTimeout(() => setStatus('running'), 0)
+                }
+                return instance.status === 'completed'
+                  ? 'completed'
+                  : instance.status === 'failed'
+                    ? 'error'
+                    : 'running'
+              })
 
-                // Try fetching detailed results
+              if (instance.status === 'completed') {
                 try {
                   const resultsResponse = await api.get(
                     `/results/${selectedCaseId}`,
@@ -217,26 +236,23 @@ export default function WorkflowRunPage() {
                   setResults(processResults(instance.output))
                 }
 
-                return // Stop polling
+                return
               } else if (instance.status === 'failed') {
                 setStatus('error')
-                return // Stop polling
+                return
               }
 
-              // Continue polling
               setTimeout(pollInstance, pollInterval)
             }
           } catch (error) {
             console.error('Error polling workflow instance:', error)
 
-            // Backoff on errors
             consecutiveErrors++
             pollInterval = Math.min(
               pollInterval * (1 + consecutiveErrors * 0.5),
               maxPollInterval,
             )
 
-            // Stop polling after too many errors
             if (consecutiveErrors > 5) {
               setStatus('error')
               return
@@ -246,7 +262,6 @@ export default function WorkflowRunPage() {
           }
         }
 
-        // Start polling after initial delay
         setTimeout(pollInstance, 1000)
       } else {
         throw new Error(
@@ -648,7 +663,6 @@ export default function WorkflowRunPage() {
                             </CardDescription>
                           </CardHeader>
                           <CardContent className="space-y-4">
-                            {/* Potential Diagnoses */}
                             <div className="space-y-2">
                               <h4 className="text-sm font-medium">
                                 Potential Diagnoses
@@ -679,7 +693,6 @@ export default function WorkflowRunPage() {
                               </div>
                             </div>
 
-                            {/* Confidence */}
                             <div className="space-y-1">
                               <h4 className="text-sm font-medium">
                                 Confidence
@@ -708,7 +721,6 @@ export default function WorkflowRunPage() {
                               </div>
                             </div>
 
-                            {/* Reasoning */}
                             <Accordion
                               type="single"
                               collapsible
@@ -746,7 +758,6 @@ export default function WorkflowRunPage() {
                               </AccordionItem>
                             </Accordion>
 
-                            {/* Risk Factors */}
                             <div className="space-y-2">
                               <h4 className="text-sm font-medium">
                                 Risk Factors
@@ -778,7 +789,6 @@ export default function WorkflowRunPage() {
                               </div>
                             </div>
 
-                            {/* Recommended Tests */}
                             <div className="space-y-2">
                               <h4 className="text-sm font-medium">
                                 Recommended Tests
@@ -825,7 +835,6 @@ export default function WorkflowRunPage() {
                             </CardDescription>
                           </CardHeader>
                           <CardContent className="space-y-4">
-                            {/* Recommendations */}
                             <div className="space-y-2">
                               <h4 className="text-sm font-medium flex items-center gap-2">
                                 <Lightbulb className="h-4 w-4 text-primary" />
@@ -857,7 +866,6 @@ export default function WorkflowRunPage() {
                               </ul>
                             </div>
 
-                            {/* Medications */}
                             <Accordion
                               type="single"
                               collapsible
@@ -899,7 +907,6 @@ export default function WorkflowRunPage() {
                               </AccordionItem>
                             </Accordion>
 
-                            {/* Lifestyle Changes */}
                             <Accordion
                               type="single"
                               collapsible
@@ -946,7 +953,6 @@ export default function WorkflowRunPage() {
                               </AccordionItem>
                             </Accordion>
 
-                            {/* Follow-up */}
                             <Accordion
                               type="single"
                               collapsible
@@ -991,7 +997,6 @@ export default function WorkflowRunPage() {
                               </AccordionItem>
                             </Accordion>
 
-                            {/* Warnings */}
                             <div className="space-y-2">
                               <h4 className="text-sm font-medium flex items-center gap-2">
                                 <ShieldAlert className="h-4 w-4 text-destructive" />
@@ -1026,7 +1031,6 @@ export default function WorkflowRunPage() {
                               </div>
                             </div>
 
-                            {/* Contraindications */}
                             <Accordion
                               type="single"
                               collapsible
