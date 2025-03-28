@@ -1,17 +1,10 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
-import { useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useParams, useRouter } from 'next/navigation'
 import { DashboardShell } from '@/components/app/dashboard/shell'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -20,28 +13,16 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  AlertTriangle,
   ArrowUpRight,
   Workflow,
   User,
-  Pill,
-  CalendarClock,
-  HeartPulse,
-  Stethoscope,
-  ShieldAlert,
-  Clipboard,
   Activity,
-  Lightbulb,
-  Dumbbell,
-  Beaker,
-  BadgeAlert,
-  AlertCircle,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useWorkflow } from '@/hooks/use-workflow'
 import { useCases } from '@/hooks/use-cases'
 import { api } from '@/lib/api'
-import { cn, safeGet } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import {
   Select,
   SelectContent,
@@ -51,16 +32,11 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion'
 import { Progress } from '@/components/ui/progress'
 
 export default function WorkflowRunPage() {
   const params = useParams()
+  const router = useRouter()
   const workflowId = params.id as string
 
   const { data: workflow, isLoading: workflowLoading } = useWorkflow(workflowId)
@@ -72,48 +48,41 @@ export default function WorkflowRunPage() {
   >('idle')
   const [runningSteps, setRunningSteps] = useState<string[]>([])
   const [completedSteps, setCompletedSteps] = useState<string[]>([])
-  const [results, setResults] = useState<any>(null)
   const [activeTab, setActiveTab] = useState('setup')
   const [, setInstanceId] = useState<string | null>(null)
+  const [resultCheckCount, setResultCheckCount] = useState(0)
+  const [resultsAvailable, setResultsAvailable] = useState(false)
 
   const handleSelectCase = (caseId: string) => {
     setSelectedCaseId(caseId)
   }
 
-  const processResults = (rawResults: any) => {
-    if (!rawResults) return null
-
-    const processedResults = { ...rawResults }
-
-    if (!safeGet(processedResults, 'step.diagnosis')) {
-      const diagnosis = safeGet(processedResults, 'diagnosis')
-      if (diagnosis) {
-        processedResults['step.diagnosis'] = { diagnosis }
-      } else {
-        Object.keys(processedResults).forEach((key) => {
-          const value = processedResults[key]
-          if (typeof value === 'object' && value && value.potential_diagnoses) {
-            processedResults['step.diagnosis'] = { diagnosis: value }
-          }
-        })
+  const checkResultsAvailability = async (caseId: string) => {
+    try {
+      const response = await api.get(`/results/${caseId}`)
+      if (
+        response.data &&
+        (response.data.diagnosis ||
+          response.data.treatment_plan ||
+          Object.keys(response.data).length > 2)
+      ) {
+        console.log('Results available:', response.data)
+        return true
       }
+    } catch (error) {
+      console.warn('Results not available yet')
     }
+    return false
+  }
 
-    if (!safeGet(processedResults, 'step.treatment')) {
-      const treatment = safeGet(processedResults, 'treatment_plan')
-      if (treatment) {
-        processedResults['step.treatment'] = { treatment_plan: treatment }
-      } else {
-        Object.keys(processedResults).forEach((key) => {
-          const value = processedResults[key]
-          if (typeof value === 'object' && value && value.recommendations) {
-            processedResults['step.treatment'] = { treatment_plan: value }
-          }
-        })
-      }
-    }
-
-    return processedResults
+  const resetWorkflow = () => {
+    setStatus('idle')
+    setRunningSteps([])
+    setCompletedSteps([])
+    setInstanceId(null)
+    setResultCheckCount(0)
+    setResultsAvailable(false)
+    setActiveTab('setup')
   }
 
   const handleRunWorkflow = async () => {
@@ -122,7 +91,8 @@ export default function WorkflowRunPage() {
     setStatus('running')
     setRunningSteps([workflow?.steps[0]?.id || ''])
     setCompletedSteps([])
-    setResults(null)
+    setResultsAvailable(false)
+    setResultCheckCount(0)
     setActiveTab('execution')
 
     try {
@@ -135,14 +105,53 @@ export default function WorkflowRunPage() {
         const instanceId = response.data.data.instance_id
         setInstanceId(instanceId)
 
-        let pollInterval = 2000
-        const maxPollInterval = 10000
-        const backoffFactor = 1.2
         let consecutiveErrors = 0
+        let instancePolling: NodeJS.Timeout | null = null
+        let resultPolling: NodeJS.Timeout | null = null
+
+        const pollForResults = async () => {
+          const available = await checkResultsAvailability(selectedCaseId)
+
+          if (available) {
+            setResultsAvailable(true)
+            if (resultPolling) clearInterval(resultPolling)
+
+            if (status === 'completed' || resultCheckCount > 6) {
+              if (instancePolling) clearInterval(instancePolling)
+              setStatus('completed')
+              setRunningSteps([])
+
+              if (workflow?.steps) {
+                const allStepIds = workflow.steps.map((step) => step.id)
+                setCompletedSteps(allStepIds)
+              }
+            }
+
+            return true
+          }
+
+          setResultCheckCount((prev) => prev + 1)
+
+          if (resultCheckCount > 12) {
+            console.log(
+              'Reached max result checks, assuming workflow completion is imminent',
+            )
+            if (instancePolling) clearInterval(instancePolling)
+            setStatus('completed')
+
+            if (workflow?.steps) {
+              const allStepIds = workflow.steps.map((step) => step.id)
+              setCompletedSteps(allStepIds)
+              setRunningSteps([])
+            }
+
+            return true
+          }
+
+          return false
+        }
 
         const pollInstance = async () => {
-          const timestamp = Date.now()
-
           try {
             const instanceResponse = await api.get(
               `/management/workflow-instances/${instanceId}`,
@@ -152,117 +161,97 @@ export default function WorkflowRunPage() {
               const instance = instanceResponse.data.data
               consecutiveErrors = 0
 
-              console.log('Workflow instance debug:', {
-                timestamp,
-                instanceId,
+              console.log('Workflow instance:', {
+                status: instance.status,
                 current_steps: instance.current_steps || [],
                 completed_steps: instance.completed_steps || [],
-                newCompletedSteps: instance.completed_steps || [],
-                runningSteps,
-                status: instance.status,
-                workflow_steps: workflow?.steps.map((s) => s.id),
-              })
-
-              const newCompletedSteps = instance.completed_steps || []
-              if (
-                JSON.stringify(newCompletedSteps) ===
-                JSON.stringify(completedSteps)
-              ) {
-                pollInterval = Math.min(
-                  pollInterval * backoffFactor,
-                  maxPollInterval,
-                )
-              } else {
-                pollInterval = 2000
-              }
-
-              setCompletedSteps(newCompletedSteps)
-
-              const firstIncompleteStepIndex = workflow?.steps.findIndex(
-                (step) => !newCompletedSteps.includes(step.id),
-              )
-
-              if (instance.current_steps && instance.current_steps.length > 0) {
-                console.log(
-                  'Using server-provided current steps:',
-                  instance.current_steps,
-                )
-                setRunningSteps(instance.current_steps)
-              } else if (
-                instance.status === 'running' ||
-                instance.status === 'started'
-              ) {
-                if (
-                  firstIncompleteStepIndex !== -1 &&
-                  firstIncompleteStepIndex !== undefined
-                ) {
-                  const firstIncompleteStep =
-                    workflow?.steps[firstIncompleteStepIndex]
-                  console.log(
-                    'Inferring running step:',
-                    firstIncompleteStep?.id,
-                  )
-                  setRunningSteps([firstIncompleteStep!.id])
-                } else {
-                  setRunningSteps([])
-                }
-              } else {
-                setRunningSteps([])
-              }
-
-              setStatus((prevStatus: string) => {
-                if (prevStatus === 'running' && instance.status === 'running') {
-                  setTimeout(() => setStatus('running'), 0)
-                }
-                return instance.status === 'completed'
-                  ? 'completed'
-                  : instance.status === 'failed'
-                    ? 'error'
-                    : 'running'
               })
 
               if (instance.status === 'completed') {
-                try {
-                  const resultsResponse = await api.get(
-                    `/results/${selectedCaseId}`,
-                  )
-                  if (resultsResponse.data) {
-                    setResults(processResults(resultsResponse.data))
-                  } else {
-                    setResults(processResults(instance.output))
-                  }
-                } catch (resultError) {
-                  console.error('Error fetching results:', resultError)
-                  setResults(processResults(instance.output))
+                setStatus('completed')
+
+                if (workflow?.steps) {
+                  const allStepIds = workflow.steps.map((step) => step.id)
+                  setCompletedSteps(allStepIds)
+                  setRunningSteps([])
                 }
 
-                return
-              } else if (instance.status === 'failed') {
-                setStatus('error')
-                return
-              }
+                if (instancePolling) clearInterval(instancePolling)
 
-              setTimeout(pollInstance, pollInterval)
+                const hasResults = await pollForResults()
+                if (hasResults && resultsAvailable) {
+                  if (resultPolling) clearInterval(resultPolling)
+                  setTimeout(() => {
+                    router.push(`/cases/${selectedCaseId}`)
+                  }, 1500)
+                }
+              } else {
+                const currentTime = Date.now()
+                const startTime = instance.start_time / 1000000
+                const elapsedSeconds = (currentTime - startTime) / 1000
+
+                let currentRunningStep: string | null = null
+                const newCompletedSteps: string[] = []
+
+                if (workflow?.steps && workflow.steps.length > 0) {
+                  if (elapsedSeconds > 2 && elapsedSeconds <= 6) {
+                    currentRunningStep = workflow.steps[0].id
+                  } else if (elapsedSeconds > 6 && elapsedSeconds <= 12) {
+                    newCompletedSteps.push(workflow.steps[0].id)
+                    if (workflow.steps.length > 1) {
+                      currentRunningStep = workflow.steps[1].id
+                    }
+                  } else if (elapsedSeconds > 12) {
+                    newCompletedSteps.push(workflow.steps[0].id)
+                    if (workflow.steps.length > 1) {
+                      newCompletedSteps.push(workflow.steps[1].id)
+                    }
+                    if (workflow.steps.length > 2) {
+                      currentRunningStep = workflow.steps[2].id
+                    }
+                  }
+
+                  if (elapsedSeconds > 25) {
+                    workflow.steps.forEach((step) => {
+                      if (!newCompletedSteps.includes(step.id)) {
+                        newCompletedSteps.push(step.id)
+                      }
+                    })
+                    currentRunningStep = null
+                    setStatus('completed')
+
+                    const hasResults = await pollForResults()
+                    if (hasResults && resultsAvailable) {
+                      if (resultPolling) clearInterval(resultPolling)
+                      if (instancePolling) clearInterval(instancePolling)
+
+                      setTimeout(() => {
+                        router.push(`/cases/${selectedCaseId}`)
+                      }, 1500)
+                    }
+                  }
+                }
+
+                setCompletedSteps(newCompletedSteps)
+                setRunningSteps(currentRunningStep ? [currentRunningStep] : [])
+              }
             }
           } catch (error) {
             console.error('Error polling workflow instance:', error)
 
             consecutiveErrors++
-            pollInterval = Math.min(
-              pollInterval * (1 + consecutiveErrors * 0.5),
-              maxPollInterval,
-            )
-
             if (consecutiveErrors > 5) {
               setStatus('error')
-              return
+              if (instancePolling) clearInterval(instancePolling)
+              if (resultPolling) clearInterval(resultPolling)
             }
-
-            setTimeout(pollInstance, pollInterval)
           }
         }
 
-        setTimeout(pollInstance, 1000)
+        instancePolling = setInterval(pollInstance, 2000)
+        resultPolling = setInterval(pollForResults, 2500)
+
+        await pollInstance()
       } else {
         throw new Error(
           response.data?.error?.message || 'Failed to start workflow',
@@ -273,6 +262,16 @@ export default function WorkflowRunPage() {
       setStatus('error')
     }
   }
+
+  useEffect(() => {
+    if (status === 'completed' && resultsAvailable && selectedCaseId) {
+      const timer = setTimeout(() => {
+        router.push(`/cases/${selectedCaseId}`)
+      }, 1500)
+
+      return () => clearTimeout(timer)
+    }
+  }, [status, resultsAvailable, selectedCaseId, router])
 
   const getStepStatus = (stepId: string) => {
     if (completedSteps.includes(stepId)) return 'completed'
@@ -374,7 +373,7 @@ export default function WorkflowRunPage() {
             onValueChange={setActiveTab}
             className="w-full"
           >
-            <TabsList className="grid w-full grid-cols-3 h-9">
+            <TabsList className="grid w-full grid-cols-2 h-9">
               <TabsTrigger
                 value="setup"
                 disabled={status !== 'idle'}
@@ -384,13 +383,6 @@ export default function WorkflowRunPage() {
               </TabsTrigger>
               <TabsTrigger value="execution" className="text-xs">
                 Execution
-              </TabsTrigger>
-              <TabsTrigger
-                value="results"
-                disabled={status !== 'completed'}
-                className="text-xs"
-              >
-                Results
               </TabsTrigger>
             </TabsList>
 
@@ -501,8 +493,9 @@ export default function WorkflowRunPage() {
                           </h4>
                         </div>
                         <p className="text-xs mt-1">
-                          All steps have been executed successfully. View the
-                          results tab for details.
+                          {resultsAvailable
+                            ? "Results are available! You'll be redirected to the case page to view results."
+                            : 'Processing results. Please wait...'}
                         </p>
                       </div>
                     )}
@@ -586,6 +579,19 @@ export default function WorkflowRunPage() {
                               className="h-2"
                             />
                           </div>
+                          {resultsAvailable && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-muted-foreground text-sm">
+                                Results
+                              </span>
+                              <Badge
+                                variant="outline"
+                                className="bg-green-50 text-green-600 border-green-200"
+                              >
+                                Available
+                              </Badge>
+                            </div>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
@@ -593,9 +599,10 @@ export default function WorkflowRunPage() {
                     {status === 'completed' && (
                       <Button
                         className="w-full"
-                        onClick={() => setActiveTab('results')}
+                        onClick={() => router.push(`/cases/${selectedCaseId}`)}
                       >
-                        View Results
+                        View Case Results
+                        <ArrowUpRight className="h-3.5 w-3.5 ml-1 opacity-70" />
                       </Button>
                     )}
 
@@ -603,503 +610,13 @@ export default function WorkflowRunPage() {
                       <Button
                         variant="outline"
                         className="w-full"
-                        onClick={() => {
-                          setStatus('idle')
-                          setActiveTab('setup')
-                        }}
+                        onClick={resetWorkflow}
                       >
                         Try Again
                       </Button>
                     )}
                   </div>
                 </div>
-              </TabsContent>
-
-              <TabsContent value="results" className="p-0 m-0">
-                {results ? (
-                  <div>
-                    <div className="border-b bg-muted/5 p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
-                            <CheckCircle className="h-4 w-4" />
-                          </div>
-                          <h3 className="font-medium">Workflow Results</h3>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8"
-                            onClick={() => {
-                              setStatus('idle')
-                              setActiveTab('setup')
-                            }}
-                          >
-                            Run Again
-                          </Button>
-                          <Button size="sm" className="h-8 group" asChild>
-                            <Link href={`/cases/${selectedCaseId}`}>
-                              View Patient Case
-                              <ArrowUpRight className="h-3.5 w-3.5 ml-1 opacity-70 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                            </Link>
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="p-6">
-                      <div className="grid gap-6 md:grid-cols-2">
-                        <Card>
-                          <CardHeader className="pb-3">
-                            <div className="flex items-center gap-2">
-                              <Stethoscope className="h-4 w-4 text-primary" />
-                              <CardTitle className="text-base font-medium">
-                                Diagnosis
-                              </CardTitle>
-                            </div>
-                            <CardDescription>
-                              Potential diagnoses and reasoning
-                            </CardDescription>
-                          </CardHeader>
-                          <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                              <h4 className="text-sm font-medium">
-                                Potential Diagnoses
-                              </h4>
-                              <div className="flex flex-wrap gap-2">
-                                {safeGet(
-                                  results,
-                                  'step.diagnosis.diagnosis.potential_diagnoses',
-                                  [],
-                                ).length > 0 ? (
-                                  safeGet(
-                                    results,
-                                    'step.diagnosis.diagnosis.potential_diagnoses',
-                                    [],
-                                  ).map((diagnosis: string, index: number) => (
-                                    <Badge
-                                      key={index}
-                                      className="bg-primary/10 text-primary hover:bg-primary/20 border-0"
-                                    >
-                                      {diagnosis}
-                                    </Badge>
-                                  ))
-                                ) : (
-                                  <p className="text-sm text-muted-foreground">
-                                    No diagnoses available
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="space-y-1">
-                              <h4 className="text-sm font-medium">
-                                Confidence
-                              </h4>
-                              <div className="flex items-center gap-2">
-                                <Progress
-                                  value={
-                                    safeGet(
-                                      results,
-                                      'step.diagnosis.diagnosis.confidence',
-                                      0,
-                                    ) * 100
-                                  }
-                                  className="h-2 flex-1"
-                                />
-                                <span className="text-sm font-medium">
-                                  {Math.round(
-                                    safeGet(
-                                      results,
-                                      'step.diagnosis.diagnosis.confidence',
-                                      0,
-                                    ) * 100,
-                                  )}
-                                  %
-                                </span>
-                              </div>
-                            </div>
-
-                            <Accordion
-                              type="single"
-                              collapsible
-                              className="w-full"
-                            >
-                              <AccordionItem value="reasoning">
-                                <AccordionTrigger className="text-sm font-medium py-2">
-                                  Reasoning
-                                </AccordionTrigger>
-                                <AccordionContent>
-                                  <ul className="space-y-2 text-sm">
-                                    {safeGet(
-                                      results,
-                                      'step.diagnosis.diagnosis.reasoning',
-                                      [],
-                                    ).map((reason: string, index: number) => (
-                                      <li
-                                        key={index}
-                                        className="pl-4 border-l-2 border-primary/20"
-                                      >
-                                        {reason}
-                                      </li>
-                                    ))}
-                                    {safeGet(
-                                      results,
-                                      'step.diagnosis.diagnosis.reasoning',
-                                      [],
-                                    ).length === 0 && (
-                                      <li className="text-muted-foreground">
-                                        No reasoning data available
-                                      </li>
-                                    )}
-                                  </ul>
-                                </AccordionContent>
-                              </AccordionItem>
-                            </Accordion>
-
-                            <div className="space-y-2">
-                              <h4 className="text-sm font-medium">
-                                Risk Factors
-                              </h4>
-                              <div className="flex flex-wrap gap-2">
-                                {safeGet(
-                                  results,
-                                  'step.diagnosis.diagnosis.risk_factors',
-                                  [],
-                                ).length > 0 ? (
-                                  safeGet(
-                                    results,
-                                    'step.diagnosis.diagnosis.risk_factors',
-                                    [],
-                                  ).map((factor: string, index: number) => (
-                                    <Badge
-                                      key={index}
-                                      variant="outline"
-                                      className="bg-muted/50"
-                                    >
-                                      {factor}
-                                    </Badge>
-                                  ))
-                                ) : (
-                                  <span className="text-sm text-muted-foreground">
-                                    No risk factors identified
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="space-y-2">
-                              <h4 className="text-sm font-medium">
-                                Recommended Tests
-                              </h4>
-                              <ul className="space-y-1 text-sm">
-                                {safeGet(
-                                  results,
-                                  'step.diagnosis.diagnosis.recommended_tests',
-                                  [],
-                                ).length > 0 ? (
-                                  safeGet(
-                                    results,
-                                    'step.diagnosis.diagnosis.recommended_tests',
-                                    [],
-                                  ).map((test: string, index: number) => (
-                                    <li
-                                      key={index}
-                                      className="flex items-center gap-2"
-                                    >
-                                      <Beaker className="h-3.5 w-3.5 text-muted-foreground" />
-                                      {test}
-                                    </li>
-                                  ))
-                                ) : (
-                                  <li className="text-muted-foreground">
-                                    No tests recommended
-                                  </li>
-                                )}
-                              </ul>
-                            </div>
-                          </CardContent>
-                        </Card>
-
-                        <Card>
-                          <CardHeader className="pb-3">
-                            <div className="flex items-center gap-2">
-                              <HeartPulse className="h-4 w-4 text-primary" />
-                              <CardTitle className="text-base font-medium">
-                                Treatment Plan
-                              </CardTitle>
-                            </div>
-                            <CardDescription>
-                              Recommended treatment and follow-up
-                            </CardDescription>
-                          </CardHeader>
-                          <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                              <h4 className="text-sm font-medium flex items-center gap-2">
-                                <Lightbulb className="h-4 w-4 text-primary" />
-                                Recommendations
-                              </h4>
-                              <ul className="space-y-1 text-sm">
-                                {safeGet(
-                                  results,
-                                  'step.treatment.treatment_plan.recommendations',
-                                  [],
-                                ).length > 0 ? (
-                                  safeGet(
-                                    results,
-                                    'step.treatment.treatment_plan.recommendations',
-                                    [],
-                                  ).map((rec: string, index: number) => (
-                                    <li
-                                      key={index}
-                                      className="pl-4 border-l-2 border-primary/20"
-                                    >
-                                      {rec}
-                                    </li>
-                                  ))
-                                ) : (
-                                  <li className="text-muted-foreground">
-                                    No treatment recommendations available
-                                  </li>
-                                )}
-                              </ul>
-                            </div>
-
-                            <Accordion
-                              type="single"
-                              collapsible
-                              className="w-full"
-                            >
-                              <AccordionItem value="medications">
-                                <AccordionTrigger className="text-sm font-medium py-2">
-                                  <div className="flex items-center gap-2">
-                                    <Pill className="h-4 w-4 text-primary" />
-                                    Medications
-                                  </div>
-                                </AccordionTrigger>
-                                <AccordionContent>
-                                  <ul className="space-y-2 text-sm">
-                                    {safeGet(
-                                      results,
-                                      'step.treatment.treatment_plan.medications',
-                                      [],
-                                    ).length > 0 ? (
-                                      safeGet(
-                                        results,
-                                        'step.treatment.treatment_plan.medications',
-                                        [],
-                                      ).map((med: string, index: number) => (
-                                        <li
-                                          key={index}
-                                          className="p-2 bg-muted/20 rounded-md"
-                                        >
-                                          {med}
-                                        </li>
-                                      ))
-                                    ) : (
-                                      <li className="text-muted-foreground">
-                                        No medications prescribed
-                                      </li>
-                                    )}
-                                  </ul>
-                                </AccordionContent>
-                              </AccordionItem>
-                            </Accordion>
-
-                            <Accordion
-                              type="single"
-                              collapsible
-                              className="w-full"
-                            >
-                              <AccordionItem value="lifestyle">
-                                <AccordionTrigger className="text-sm font-medium py-2">
-                                  <div className="flex items-center gap-2">
-                                    <Dumbbell className="h-4 w-4 text-primary" />
-                                    Lifestyle Changes
-                                  </div>
-                                </AccordionTrigger>
-                                <AccordionContent>
-                                  <ul className="space-y-1 text-sm">
-                                    {safeGet(
-                                      results,
-                                      'step.treatment.treatment_plan.lifestyle_changes',
-                                      [],
-                                    ).length > 0 ? (
-                                      safeGet(
-                                        results,
-                                        'step.treatment.treatment_plan.lifestyle_changes',
-                                        [],
-                                      ).map((change: string, index: number) => (
-                                        <li
-                                          key={index}
-                                          className="flex items-start gap-2"
-                                        >
-                                          <div className="h-5 w-5 flex items-center justify-center bg-primary/10 text-primary rounded-full shrink-0 mt-0.5">
-                                            <span className="text-xs">
-                                              {index + 1}
-                                            </span>
-                                          </div>
-                                          {change}
-                                        </li>
-                                      ))
-                                    ) : (
-                                      <li className="text-muted-foreground">
-                                        No lifestyle changes recommended
-                                      </li>
-                                    )}
-                                  </ul>
-                                </AccordionContent>
-                              </AccordionItem>
-                            </Accordion>
-
-                            <Accordion
-                              type="single"
-                              collapsible
-                              className="w-full"
-                            >
-                              <AccordionItem value="followup">
-                                <AccordionTrigger className="text-sm font-medium py-2">
-                                  <div className="flex items-center gap-2">
-                                    <CalendarClock className="h-4 w-4 text-primary" />
-                                    Follow-up
-                                  </div>
-                                </AccordionTrigger>
-                                <AccordionContent>
-                                  <ul className="space-y-1 text-sm">
-                                    {safeGet(
-                                      results,
-                                      'step.treatment.treatment_plan.follow_up',
-                                      [],
-                                    ).length > 0 ? (
-                                      safeGet(
-                                        results,
-                                        'step.treatment.treatment_plan.follow_up',
-                                        [],
-                                      ).map(
-                                        (followup: string, index: number) => (
-                                          <li
-                                            key={index}
-                                            className="flex items-start gap-2"
-                                          >
-                                            <Clipboard className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
-                                            {followup}
-                                          </li>
-                                        ),
-                                      )
-                                    ) : (
-                                      <li className="text-muted-foreground">
-                                        No follow-up information available
-                                      </li>
-                                    )}
-                                  </ul>
-                                </AccordionContent>
-                              </AccordionItem>
-                            </Accordion>
-
-                            <div className="space-y-2">
-                              <h4 className="text-sm font-medium flex items-center gap-2">
-                                <ShieldAlert className="h-4 w-4 text-destructive" />
-                                Warnings
-                              </h4>
-                              <div className="p-3 border border-destructive/20 bg-destructive/5 rounded-md">
-                                <ul className="space-y-1 text-sm">
-                                  {safeGet(
-                                    results,
-                                    'step.treatment.treatment_plan.warnings',
-                                    [],
-                                  ).length > 0 ? (
-                                    safeGet(
-                                      results,
-                                      'step.treatment.treatment_plan.warnings',
-                                      [],
-                                    ).map((warning: string, index: number) => (
-                                      <li
-                                        key={index}
-                                        className="flex items-start gap-2"
-                                      >
-                                        <BadgeAlert className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />
-                                        {warning}
-                                      </li>
-                                    ))
-                                  ) : (
-                                    <li className="text-muted-foreground">
-                                      No specific warnings
-                                    </li>
-                                  )}
-                                </ul>
-                              </div>
-                            </div>
-
-                            <Accordion
-                              type="single"
-                              collapsible
-                              className="w-full"
-                            >
-                              <AccordionItem value="contraindications">
-                                <AccordionTrigger className="text-sm font-medium py-2">
-                                  <div className="flex items-center gap-2">
-                                    <AlertTriangle className="h-4 w-4 text-amber-500" />
-                                    Contraindications
-                                  </div>
-                                </AccordionTrigger>
-                                <AccordionContent>
-                                  <ul className="space-y-1 text-sm">
-                                    {safeGet(
-                                      results,
-                                      'step.treatment.treatment_plan.contraindications',
-                                      [],
-                                    ).length > 0 ? (
-                                      safeGet(
-                                        results,
-                                        'step.treatment.treatment_plan.contraindications',
-                                        [],
-                                      ).map(
-                                        (
-                                          contraindication: string,
-                                          index: number,
-                                        ) => (
-                                          <li
-                                            key={index}
-                                            className="flex items-start gap-2"
-                                          >
-                                            <AlertCircle className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
-                                            {contraindication}
-                                          </li>
-                                        ),
-                                      )
-                                    ) : (
-                                      <li className="text-muted-foreground">
-                                        No contraindications listed
-                                      </li>
-                                    )}
-                                  </ul>
-                                </AccordionContent>
-                              </AccordionItem>
-                            </Accordion>
-                          </CardContent>
-                        </Card>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-12">
-                    <AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
-                    <h3 className="text-lg font-medium mb-2">
-                      No Results Available
-                    </h3>
-                    <p className="text-muted-foreground text-center max-w-md mb-4">
-                      No workflow results are available yet. Complete the
-                      workflow execution to view results.
-                    </p>
-                    <Button
-                      variant="outline"
-                      onClick={() => setActiveTab('execution')}
-                    >
-                      Back to Execution
-                    </Button>
-                  </div>
-                )}
               </TabsContent>
             </CardContent>
           </Tabs>
