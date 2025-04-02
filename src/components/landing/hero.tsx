@@ -1,8 +1,8 @@
-'use client'
+"use client";
 
-import { useEffect, useRef } from 'react'
-import Link from 'next/link'
-import { Button } from '@/components/ui/button'
+import { useEffect, useRef } from "react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import {
   ArrowRight,
   Sparkles,
@@ -10,41 +10,45 @@ import {
   Workflow,
   Brain,
   Clock,
-} from 'lucide-react'
+  Bot,
+  Network,
+  Shield,
+  FileText,
+} from "lucide-react";
 
 export function Hero() {
-  const statsRef = useRef<HTMLDivElement>(null)
+  const statsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const stats = statsRef.current?.querySelectorAll('.stat-item')
+    const stats = statsRef.current?.querySelectorAll(".stat-item");
     stats?.forEach((stat, index) => {
       setTimeout(
         () => {
-          stat.classList.add('animate-in')
+          stat.classList.add("animate-in");
         },
-        1000 + index * 150,
-      )
-    })
-  }, [])
+        1000 + index * 150
+      );
+    });
+  }, []);
 
   const stats = [
     {
       icon: <Brain className="h-8 w-8" />,
-      label: 'AI Architecture',
+      label: "Multi-Agent Intelligence",
+    },
+    {
+      icon: <Network className="h-8 w-8" />,
+      label: "Orchestration Engine",
+    },
+    {
+      icon: <FileText className="h-8 w-8" />,
+      label: "Medical Knowledge Base",
     },
     {
       icon: <Workflow className="h-8 w-8" />,
-      label: 'Visual Design',
+      label: "Custom Workflows",
     },
-    {
-      icon: <Activity className="h-8 w-8" />,
-      label: 'Medical Knowledge',
-    },
-    {
-      icon: <Clock className="h-8 w-8" />,
-      label: 'Real-time Processing',
-    },
-  ]
+  ];
 
   return (
     <div className="relative overflow-hidden">
@@ -59,7 +63,7 @@ export function Hero() {
             className="aspect-[1155/678] w-[72.1875rem] bg-gradient-to-tr from-primary/30 to-primary/10 opacity-30 dark:from-primary/20 dark:to-primary/5"
             style={{
               clipPath:
-                'polygon(74.1% 44.1%, 100% 61.6%, 97.5% 26.9%, 85.5% 0.1%, 80.7% 2%, 72.5% 32.5%, 60.2% 62.4%, 52.4% 68.1%, 47.5% 58.3%, 45.2% 34.5%, 27.5% 76.7%, 0.1% 64.9%, 17.9% 100%, 27.6% 76.8%, 76.1% 97.7%, 74.1% 44.1%)',
+                "polygon(74.1% 44.1%, 100% 61.6%, 97.5% 26.9%, 85.5% 0.1%, 80.7% 2%, 72.5% 32.5%, 60.2% 62.4%, 52.4% 68.1%, 47.5% 58.3%, 45.2% 34.5%, 27.5% 76.7%, 0.1% 64.9%, 17.9% 100%, 27.6% 76.8%, 76.1% 97.7%, 74.1% 44.1%)",
             }}
           />
         </div>
@@ -71,9 +75,9 @@ export function Hero() {
           <div
             className="aspect-[1155/678] w-[50rem] bg-gradient-to-tr from-primary/20 to-secondary/10 opacity-20 dark:opacity-10 animate-pulse"
             style={{
-              animationDelay: '1s',
+              animationDelay: "1s",
               clipPath:
-                'polygon(74.1% 44.1%, 100% 61.6%, 97.5% 26.9%, 85.5% 0.1%, 80.7% 2%, 72.5% 32.5%, 60.2% 62.4%, 52.4% 68.1%, 47.5% 58.3%, 45.2% 34.5%, 27.5% 76.7%, 0.1% 64.9%, 17.9% 100%, 27.6% 76.8%, 76.1% 97.7%, 74.1% 44.1%)',
+                "polygon(74.1% 44.1%, 100% 61.6%, 97.5% 26.9%, 85.5% 0.1%, 80.7% 2%, 72.5% 32.5%, 60.2% 62.4%, 52.4% 68.1%, 47.5% 58.3%, 45.2% 34.5%, 27.5% 76.7%, 0.1% 64.9%, 17.9% 100%, 27.6% 76.8%, 76.1% 97.7%, 74.1% 44.1%)",
             }}
           />
         </div>
@@ -94,33 +98,33 @@ export function Hero() {
         <div className="mx-auto max-w-4xl text-center">
           <div
             className="mb-6 flex items-center justify-center opacity-0 animate-in-custom"
-            style={{ animationDelay: '0.2s' }}
+            style={{ animationDelay: "0.2s" }}
           >
             <span className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary ring-1 ring-inset ring-primary/20 dark:bg-primary/5">
               <Sparkles className="mr-1 h-3.5 w-3.5" />
-              Next-Gen Healthcare AI
+              Advanced Medical AI Orchestration
             </span>
           </div>
 
           <h1
             className="font-bold text-4xl md:text-5xl lg:text-6xl mb-6 tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70 opacity-0 animate-in-custom"
-            style={{ animationDelay: '0.4s' }}
+            style={{ animationDelay: "0.4s" }}
           >
-            AI-Orchestrated Medical Intelligence
+            Where AI Agents Harmonize for Medical Excellence
           </h1>
 
           <p
             className="text-xl text-foreground/80 mb-8 md:text-2xl max-w-2xl mx-auto opacity-0 animate-in-custom"
-            style={{ animationDelay: '0.6s' }}
+            style={{ animationDelay: "0.6s" }}
           >
-            SwordSymphony conducts a synchronized ensemble of specialized AI
-            agents to deliver precise diagnoses and personalized treatment
+            SwordSymphony orchestrates specialized AI agents through custom
+            workflows to deliver precise diagnoses and personalized treatment
             plans.
           </p>
 
           <div
             className="flex flex-col sm:flex-row justify-center gap-4 opacity-0 animate-in-custom"
-            style={{ animationDelay: '0.8s' }}
+            style={{ animationDelay: "0.8s" }}
           >
             <Button
               size="lg"
@@ -192,5 +196,5 @@ export function Hero() {
         }
       `}</style>
     </div>
-  )
+  );
 }

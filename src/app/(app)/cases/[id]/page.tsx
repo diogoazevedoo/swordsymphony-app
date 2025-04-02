@@ -695,7 +695,7 @@ export default function CaseDetailsPage() {
                       Potential Diagnoses
                     </h3>
                     <div className="space-y-3">
-                      {diagnosis.potential_diagnoses.map((diag, index) => (
+                      {diagnosis.potential_diagnoses?.map((diag, index) => (
                         <div
                           key={index}
                           className={cn(

@@ -2,102 +2,143 @@
 
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
-import { ArrowRight, CheckCircle } from 'lucide-react'
+import { ArrowRight, CheckCircle, Brain, Stethoscope, Workflow, Shield, HeartPulse } from 'lucide-react'
 import { AnimateOnScroll } from '@/components/landing/animate-on-scroll'
 
 export function About() {
   const technologies = [
-    'Advanced natural language processing for symptom analysis',
-    'Multi-agent orchestration for comprehensive medical insights',
-    'Real-time diagnostic capabilities with continuous learning',
-    'Evidence-based treatment recommendations',
+    'Natural language processing for comprehensive symptom analysis',
+    'Go-powered actor system for robust agent coordination',
+    'YAML configuration for flexible workflow deployment',
+    'Real-time WebSocket monitoring of diagnostic processes',
+    'Medical knowledge base with conditions, symptoms, and medications',
     'Secure, private handling of sensitive medical information',
+  ]
+
+  const specializations = [
+    { 
+      name: 'Cardiac Assessment',
+      icon: <HeartPulse className="h-5 w-5" />,
+      description: 'Specialized agents for heart condition diagnosis and treatment'
+    },
+    { 
+      name: 'Neurological Evaluation',
+      icon: <Brain className="h-5 w-5" />,
+      description: 'Brain and nervous system assessment workflows'
+    },
+    { 
+      name: 'Emergency Triage',
+      icon: <Shield className="h-5 w-5" />,
+      description: 'Rapid evaluation for urgent medical conditions'
+    },
+    { 
+      name: 'Pediatric Care',
+      icon: <Stethoscope className="h-5 w-5" />,
+      description: 'Child-specific diagnosis and treatment patterns'
+    },
   ]
 
   return (
     <section id="about" className="py-24 relative overflow-hidden">
       <div className="absolute inset-0 -z-10">
+        <div className="absolute inset-0 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px] [mask-image:radial-gradient(ellipse_50%_50%_at_50%_50%,#000_70%,transparent_100%)]" />
         <div className="absolute right-0 bottom-0 -z-10 transform translate-x-1/3 translate-y-1/4">
           <div className="aspect-square h-[400px] rounded-full bg-gradient-to-tr from-primary/20 to-primary/5 opacity-50 blur-3xl" />
         </div>
       </div>
 
       <div className="container mx-auto px-4">
+        <AnimateOnScroll animation="slide-up" className="text-center mb-16 max-w-3xl mx-auto">
+          <div className="mb-6 inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary ring-1 ring-inset ring-primary/20">
+            Our Mission
+          </div>
+          <h2 className="text-3xl md:text-4xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70">
+            Orchestrating the Future of Healthcare
+          </h2>
+          <p className="text-xl text-foreground/70">
+            SwordSymphony brings together specialized AI agents in harmony to deliver
+            precise diagnoses and personalized treatment plans for better patient outcomes.
+          </p>
+        </AnimateOnScroll>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-16">
+          {specializations.map((spec, index) => (
+            <AnimateOnScroll 
+              key={index} 
+              animation="slide-up" 
+              delay={index * 150}
+              className="bg-background/50 backdrop-blur-sm border border-border/50 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:border-primary/20 transition-all"
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <div className="mb-3 bg-primary/10 p-2 rounded-full w-12 h-12 flex items-center justify-center text-primary">
+                {spec.icon}
+              </div>
+              <h3 className="font-medium text-lg mb-2">{spec.name}</h3>
+              <p className="text-foreground/70 text-sm">{spec.description}</p>
+            </AnimateOnScroll>
+          ))}
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
           <AnimateOnScroll animation="slide-left">
             <div className="mb-6 inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary ring-1 ring-inset ring-primary/20">
-              About Us
-            </div>
-            <h2 className="text-3xl md:text-4xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70">
               About SwordSymphony
+            </div>
+            <h2 className="text-3xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70">
+              AI Orchestra for Medical Excellence
             </h2>
             <p className="text-foreground/70 mb-6">
-              SwordSymphony represents the cutting edge of medical AI
-              technology, designed to assist healthcare professionals in
-              providing accurate diagnoses and personalized treatment plans.
+              SwordSymphony represents the next evolution in medical AI technology, 
+              designed to assist healthcare professionals with advanced diagnostic 
+              and treatment planning capabilities that mirror specialist expertise.
             </p>
             <p className="text-foreground/70 mb-6">
-              Our system orchestrates multiple specialized AI agents that work
-              together, each focusing on different aspects of the diagnostic and
-              treatment process. This multi-agent approach ensures comprehensive
-              analysis and recommendations.
+              Our platform orchestrates multiple specialized AI agents working in concert,
+              each handling distinct aspects of the medical assessment process. This 
+              multi-agent architecture enables comprehensive analysis and recommendations 
+              that consider all aspects of a patient's condition.
             </p>
             <p className="text-foreground/70 mb-8">
-              Built with a focus on accuracy, efficiency, and patient care,
-              SwordSymphony aims to augment medical professionals' capabilities
-              and improve healthcare outcomes.
+              Built with a focus on accuracy, explainability, and evidence-based medicine, 
+              SwordSymphony augments healthcare professionals' capabilities while maintaining
+              the critical human element in medical decision-making.
             </p>
-            <Button size="lg" className="group" asChild>
-              <Link href="/dashboard">
-                Experience the platform
-                <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
-              </Link>
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <Button size="lg" className="group" asChild>
+                <Link href="/dashboard">
+                  Experience the platform
+                  <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+                </Link>
+              </Button>
+              <Button size="lg" variant="outline" className="group" asChild>
+                <Link href="/documentation">
+                  View documentation
+                  <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+                </Link>
+              </Button>
+            </div>
           </AnimateOnScroll>
 
           <AnimateOnScroll animation="slide-right" delay={200}>
             <div className="bg-gradient-to-br from-background to-muted/30 p-8 rounded-xl border border-border shadow-sm">
               <h3 className="text-xl font-bold mb-4 flex items-center">
-                <span className="bg-primary/10 rounded-full p-1.5 mr-2">
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 20 20"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      d="M10 0C4.48 0 0 4.48 0 10C0 15.52 4.48 20 10 20C15.52 20 20 15.52 20 10C20 4.48 15.52 0 10 0ZM8 15L3 10L4.41 8.59L8 12.17L15.59 4.58L17 6L8 15Z"
-                      fill="currentColor"
-                      className="text-primary"
-                    />
-                  </svg>
-                </span>
+                <div className="bg-primary/10 rounded-full p-1.5 mr-2 text-primary">
+                  <Workflow className="h-5 w-5" />
+                </div>
                 Our Vision
               </h3>
               <p className="text-foreground/70 mb-6 pl-9">
                 We envision a future where AI-assisted healthcare is accessible
-                to everyone, providing expert-level medical analysis regardless
-                of location or resources.
+                to everyone, providing expert-level medical guidance regardless
+                of location or resources, while supporting rather than replacing
+                healthcare professionals.
               </p>
 
               <h3 className="text-xl font-bold mb-4 flex items-center">
-                <span className="bg-primary/10 rounded-full p-1.5 mr-2">
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 20 20"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      d="M17.5 12.5C17.5 13.33 16.83 14 16 14H4C3.17 14 2.5 13.33 2.5 12.5V4.5C2.5 3.67 3.17 3 4 3H16C16.83 3 17.5 3.67 17.5 4.5V12.5ZM16 1H4C2.07 1 0.5 2.57 0.5 4.5V12.5C0.5 14.43 2.07 16 4 16H16C17.93 16 19.5 14.43 19.5 12.5V4.5C19.5 2.57 17.93 1 16 1ZM10 14.5H4C2.07 14.5 0.5 16.07 0.5 18V19H19.5V18C19.5 16.07 17.93 14.5 16 14.5H10Z"
-                      fill="currentColor"
-                      className="text-primary"
-                    />
-                  </svg>
-                </span>
-                Technology
+                <div className="bg-primary/10 rounded-full p-1.5 mr-2 text-primary">
+                  <Brain className="h-5 w-5" />
+                </div>
+                Technology Stack
               </h3>
               <ul className="space-y-3 text-foreground/70 pl-9">
                 {technologies.map((tech, index) => (
@@ -110,6 +151,12 @@ export function About() {
             </div>
           </AnimateOnScroll>
         </div>
+        
+        <AnimateOnScroll animation="slide-up" delay={300} className="mt-16 text-center">
+          <div className="inline-flex items-center rounded-full bg-primary/10 px-4 py-2 text-sm font-medium text-primary ring-1 ring-inset ring-primary/20">
+            Ready to see SwordSymphony in action? <Link href="/dashboard" className="ml-2 underline underline-offset-2 hover:text-primary/90">Go to Dashboard</Link>
+          </div>
+        </AnimateOnScroll>
       </div>
     </section>
   )

@@ -1,4 +1,4 @@
-'use client'
+"use client";
 
 import {
   Brain,
@@ -9,59 +9,63 @@ import {
   Network,
   History,
   Bot,
-} from 'lucide-react'
-import { AnimateOnScroll } from '@/components/landing/animate-on-scroll'
+  BarChart,
+  Stethoscope,
+  HeartPulse,
+  RefreshCw,
+} from "lucide-react";
+import { AnimateOnScroll } from "@/components/landing/animate-on-scroll";
 
 const features = [
   {
     icon: <Brain className="h-10 w-10 text-primary" />,
-    title: 'Multi-Agent Intelligence',
+    title: "Multi-Agent Intelligence",
     description:
-      'Specialized AI agents work together - intake, diagnostic, and treatment - each performing distinct medical tasks',
+      "Intake, diagnostic, and treatment agents collaborate on comprehensive medical analysis and personalized plans",
   },
   {
     icon: <Workflow className="h-10 w-10 text-primary" />,
-    title: 'Custom Workflows',
+    title: "Workflow Orchestrator",
     description:
-      'Create, visualize and deploy custom medical workflows with drag-and-drop simplicity',
+      "Design and deploy specialized medical workflows for cardiology, neurology, pediatrics, and emergency medicine",
   },
   {
     icon: <SlidersHorizontal className="h-10 w-10 text-primary" />,
-    title: 'Agent Configuration',
+    title: "Agent Configuration",
     description:
-      'Design specialized agents for specific medical domains or diagnosis types',
+      "YAML-based agent configuration allows for rapid deployment of specialized medical experts",
   },
   {
     icon: <Network className="h-10 w-10 text-primary" />,
-    title: 'Orchestration Engine',
+    title: "Message Routing",
     description:
-      'Sophisticated message routing between agents with real-time coordination and monitoring',
+      "Actor-based communication system ensures efficient information flow between specialized medical agents",
   },
   {
     icon: <FileText className="h-10 w-10 text-primary" />,
-    title: 'Medical Knowledge Base',
+    title: "Medical Knowledge Base",
     description:
-      'Built-in database of conditions, symptoms, medications, and interactions to inform diagnoses',
+      "Integrated database of conditions, symptoms, medications, and interactions to enhance diagnostic accuracy",
   },
   {
     icon: <History className="h-10 w-10 text-primary" />,
-    title: 'Case Management',
+    title: "Case Management",
     description:
-      'Upload and process patient data with comprehensive tracking and results storage',
+      "Comprehensive patient case tracking with complete diagnostic journey and treatment recommendations",
   },
   {
     icon: <Shield className="h-10 w-10 text-primary" />,
-    title: 'Interaction Detection',
+    title: "Medication Safety",
     description:
-      'Automatic identification of potential medication interactions and contraindications',
+      "Automatic detection of potential medication interactions, allergies, and contraindications",
   },
   {
     icon: <Bot className="h-10 w-10 text-primary" />,
-    title: 'Real-time Status Updates',
+    title: "Real-time Monitoring",
     description:
-      'WebSocket integration provides live system status and message flow visualization',
+      "Live visualization of agent communication, workflow progress, and system status updates",
   },
-]
+];
 
 export function Features() {
   return (
@@ -82,11 +86,12 @@ export function Features() {
             Features
           </div>
           <h2 className="text-3xl md:text-4xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70">
-            Advanced AI Orchestration
+            Advanced Medical AI Orchestration
           </h2>
           <p className="text-xl text-foreground/70">
-            SwordSymphony's multi-agent system coordinates specialized medical
-            AI with sophisticated workflows and real-time orchestration.
+            SwordSymphony conducts specialized medical AI agents through
+            sophisticated workflows, coordinating their expertise to deliver
+            precise analysis and personalized care recommendations.
           </p>
         </AnimateOnScroll>
 
@@ -117,5 +122,5 @@ export function Features() {
         </div>
       </div>
     </section>
-  )
+  );
 }
