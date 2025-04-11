@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { DashboardShell } from '@/components/app/dashboard/shell'
 import { Button } from '@/components/ui/button'
 import {
@@ -138,6 +138,10 @@ function useCaseResults(caseId: string) {
       return response.data as CaseResults
     },
     enabled: !!caseId,
+    refetchInterval: (query) => {
+      const data = query.state.data as CaseResults | undefined
+      return !data || (!data.diagnosis && !data.treatment_plan) ? 5000 : false
+    },
   })
 }
 
@@ -159,6 +163,7 @@ export default function CaseDetailsPage() {
   const caseId = params.id as string
   const [activeTab, setActiveTab] = useState('overview')
   const [documentRefreshTrigger, setDocumentRefreshTrigger] = useState(0)
+  const [runningWorkflow, setRunningWorkflow] = useState(false)
 
   const { data: caseData, isLoading: caseLoading } = useCase(caseId)
   const { data: results, isLoading: resultsLoading } = useCaseResults(caseId)
@@ -168,11 +173,20 @@ export default function CaseDetailsPage() {
   const diagnosis = results?.diagnosis || null
   const treatmentPlan = results?.treatment_plan || null
 
+  useEffect(() => {
+    if (hasResults && runningWorkflow) {
+      setActiveTab('diagnosis')
+      setRunningWorkflow(false)
+    }
+  }, [hasResults, runningWorkflow])
+
   const handleRunWorkflow = async (workflowId: string) => {
     try {
+      setRunningWorkflow(true)
       await api.post(`/workflows/${workflowId}/start/${caseId}`)
     } catch (error) {
       console.error('Error starting workflow:', error)
+      setRunningWorkflow(false)
     }
   }
 
@@ -327,9 +341,15 @@ export default function CaseDetailsPage() {
           <TabsTrigger value="documents">Documents</TabsTrigger>
           <TabsTrigger value="diagnosis" disabled={!hasResults}>
             Diagnosis
+            {runningWorkflow && !hasResults && (
+              <span className="ml-2 inline-flex h-2 w-2 animate-pulse rounded-full bg-primary"></span>
+            )}
           </TabsTrigger>
           <TabsTrigger value="treatment" disabled={!hasResults}>
             Treatment
+            {runningWorkflow && !hasResults && (
+              <span className="ml-2 inline-flex h-2 w-2 animate-pulse rounded-full bg-primary"></span>
+            )}
           </TabsTrigger>
         </TabsList>
 
