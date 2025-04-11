@@ -65,7 +65,14 @@ export function useDocuments(caseId: string) {
   const getDocumentAnalysis = async (documentId: string) => {
     try {
       const response = await api.get(`/documents/${documentId}/analysis`)
-      return response.data.analysis
+      // Make sure we're getting the analysis data correctly
+      if (response.data && response.data.analysis) {
+        console.log('API returned analysis:', response.data.analysis)
+        return response.data.analysis
+      } else {
+        console.error('Invalid analysis data format:', response.data)
+        throw new Error('Invalid analysis data format')
+      }
     } catch (error) {
       console.error('Error fetching document analysis:', error)
       throw error

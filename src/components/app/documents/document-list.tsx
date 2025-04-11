@@ -14,6 +14,8 @@ import {
   Download,
   FileIcon,
   BarChart3,
+  Eye,
+  Maximize2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -27,14 +29,19 @@ import {
 } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useDocuments, Document } from '@/hooks/use-documents'
+import { useDocuments, type Document } from '@/hooks/use-documents'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion'
 
 interface DocumentListProps {
   caseId: string
   refreshTrigger?: number
 }
 
-// Helper to get appropriate icon for document type
 function getDocumentIcon(contentType: string) {
   if (contentType.includes('pdf')) {
     return <FileText className="h-6 w-6" />
@@ -45,7 +52,6 @@ function getDocumentIcon(contentType: string) {
   }
 }
 
-// Helper to format file size
 function formatFileSize(bytes: number) {
   if (bytes < 1024) return bytes + ' B'
   else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
@@ -62,17 +68,21 @@ export function DocumentList({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [documentToDelete, setDocumentToDelete] = useState<string | null>(null)
 
-  const { documents, isLoading, error, refetch, deleteDocument } =
-    useDocuments(caseId)
+  const {
+    documents,
+    isLoading,
+    error,
+    refetch,
+    deleteDocument,
+    getDocumentAnalysis,
+  } = useDocuments(caseId)
 
-  // Refetch when refreshTrigger changes
   useEffect(() => {
     if (refreshTrigger > 0) {
       refetch()
     }
   }, [refreshTrigger, refetch])
 
-  // Handle document deletion
   const handleDeleteDocument = async () => {
     if (!documentToDelete) return
 
@@ -85,12 +95,29 @@ export function DocumentList({
     }
   }
 
-  // Handle document preview
-  const handlePreviewDocument = (document: Document) => {
-    setSelectedDocument(document)
+  const handlePreviewDocument = async (document: Document) => {
+    console.log('Initial document analysis:', document.analysis)
+
+    if (document.status === 'analyzed') {
+      try {
+        const freshAnalysis = await getDocumentAnalysis(document.id)
+        console.log('Fresh analysis data:', freshAnalysis)
+
+        const documentWithFreshAnalysis = {
+          ...document,
+          analysis: freshAnalysis,
+        }
+
+        setSelectedDocument(documentWithFreshAnalysis)
+      } catch (error) {
+        console.error('Error fetching fresh analysis:', error)
+        setSelectedDocument(document)
+      }
+    } else {
+      setSelectedDocument(document)
+    }
   }
 
-  // Open document in new tab
   const openDocument = (document: Document) => {
     window.open(document.file_url, '_blank')
   }
@@ -271,141 +298,145 @@ export function DocumentList({
                 <>
                   <Separator />
                   <div className="p-4 bg-muted/30">
-                    <h4 className="text-sm font-medium mb-2">
-                      Analysis Results:
-                    </h4>
-                    {document.analysis.findings &&
-                      Array.isArray(document.analysis.findings) && (
-                        <div className="mb-2">
-                          <span className="text-xs font-medium text-muted-foreground">
-                            Findings:
-                          </span>
-                          <ul className="text-xs mt-1 pl-4 list-disc">
-                            {document.analysis.findings.map((finding, idx) => (
-                              <li key={idx}>{finding}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-medium">Analysis Results</h4>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2"
+                        onClick={() => handlePreviewDocument(document)}
+                      >
+                        <Eye className="h-3.5 w-3.5 mr-1" />
+                        <span className="text-xs">View Details</span>
+                      </Button>
+                    </div>
 
-                    {document.analysis.abnormalities &&
-                      Array.isArray(document.analysis.abnormalities) && (
-                        <div className="mb-2">
-                          <span className="text-xs font-medium text-muted-foreground">
-                            Abnormalities:
-                          </span>
-                          <ul className="text-xs mt-1 pl-4 list-disc">
-                            {document.analysis.abnormalities.map(
-                              (item, idx) => (
-                                <li key={idx}>{item}</li>
-                              ),
-                            )}
-                          </ul>
-                        </div>
+                    <div className="flex items-center gap-2 mt-2 mb-3">
+                      {document.analysis.confidence && (
+                        <Badge
+                          variant="outline"
+                          className="bg-primary/10 text-xs"
+                        >
+                          Confidence:{' '}
+                          {typeof document.analysis.confidence === 'number'
+                            ? `${Math.round(document.analysis.confidence * 100)}%`
+                            : document.analysis.confidence}
+                        </Badge>
                       )}
-
-                    {document.analysis.abnormal_values &&
-                      Array.isArray(document.analysis.abnormal_values) && (
-                        <div className="mb-2">
-                          <span className="text-xs font-medium text-muted-foreground">
-                            Abnormal Values:
-                          </span>
-                          <ul className="text-xs mt-1 pl-4 list-disc">
-                            {document.analysis.abnormal_values.map(
-                              (item, idx) => (
-                                <li key={idx}>{item}</li>
-                              ),
-                            )}
-                          </ul>
-                        </div>
+                      {document.analysis.method && (
+                        <Badge variant="outline" className="bg-muted text-xs">
+                          {String(document.analysis.method)}
+                        </Badge>
                       )}
+                      {document.analysis.pages &&
+                        Array.isArray(document.analysis.pages) && (
+                          <Badge variant="outline" className="bg-muted text-xs">
+                            {document.analysis.pages.length} pages
+                          </Badge>
+                        )}
+                    </div>
 
-                    {document.analysis.key_values &&
-                      typeof document.analysis.key_values === 'object' && (
-                        <div className="mb-2">
-                          <span className="text-xs font-medium text-muted-foreground">
-                            Key Values:
-                          </span>
-                          <div className="text-xs mt-1 grid grid-cols-2 gap-1">
-                            {Object.entries(document.analysis.key_values).map(
-                              ([key, value]) => (
-                                <div key={key} className="flex">
-                                  <span className="font-medium mr-1">
-                                    {key}:
-                                  </span>
-                                  <span>{String(value)}</span>
+                    {document.analysis.pages &&
+                      Array.isArray(document.analysis.pages) &&
+                      document.analysis.pages.length > 0 && (
+                        <Accordion
+                          type="single"
+                          collapsible
+                          className="mt-2 w-full border rounded-md overflow-hidden"
+                        >
+                          {document.analysis.pages.map((page, index) => (
+                            <AccordionItem
+                              key={index}
+                              value={`card-page-${index}`}
+                              className="border-b"
+                            >
+                              <AccordionTrigger className="py-2 px-3 text-xs hover:no-underline bg-muted/30">
+                                <div className="flex items-center gap-2">
+                                  <span>Page {page.page_number}</span>
+                                  {page.abnormal_values &&
+                                    page.abnormal_values.length > 0 && (
+                                      <Badge
+                                        variant="outline"
+                                        className="bg-amber-50 text-amber-700 text-[10px] px-1 py-0 h-4"
+                                      >
+                                        {page.abnormal_values.length} abnormal
+                                      </Badge>
+                                    )}
                                 </div>
-                              ),
-                            )}
-                          </div>
-                        </div>
+                              </AccordionTrigger>
+                              <AccordionContent className="text-xs px-3 py-2 bg-white">
+                                <div className="space-y-2">
+                                  {page.findings &&
+                                    Array.isArray(page.findings) && (
+                                      <div>
+                                        <span className="font-medium text-primary/90">
+                                          Key Findings:
+                                        </span>
+                                        <ul className="mt-1 ml-4 list-disc space-y-0.5">
+                                          {page.findings.map(
+                                            (item: string, i: number) => (
+                                              <li key={i}>{item}</li>
+                                            ),
+                                          )}
+                                        </ul>
+                                      </div>
+                                    )}
+
+                                  {page.abnormal_values &&
+                                    Array.isArray(page.abnormal_values) &&
+                                    page.abnormal_values.length > 0 && (
+                                      <div>
+                                        <span className="font-medium text-amber-700">
+                                          Abnormal Values:
+                                        </span>
+                                        <div className="mt-1 flex flex-wrap gap-1 ml-1">
+                                          {page.abnormal_values.map(
+                                            (item: string, i: number) => (
+                                              <Badge
+                                                key={i}
+                                                variant="outline"
+                                                className="bg-amber-50 text-amber-700 text-[10px] whitespace-nowrap"
+                                              >
+                                                {item}
+                                              </Badge>
+                                            ),
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                  {page.interpretation && (
+                                    <div className="text-gray-600 italic text-xs mt-1">
+                                      "{page.interpretation}"
+                                    </div>
+                                  )}
+                                </div>
+                              </AccordionContent>
+                            </AccordionItem>
+                          ))}
+                        </Accordion>
                       )}
 
-                    {document.analysis.interpretation && (
-                      <div className="mb-2">
-                        <span className="text-xs font-medium text-muted-foreground">
-                          Interpretation:
-                        </span>
-                        <p className="text-xs mt-1">
-                          {document.analysis.interpretation}
-                        </p>
+                    {(!document.analysis.pages ||
+                      !Array.isArray(document.analysis.pages)) && (
+                      <div className="mt-2 space-y-2">
+                        {document.analysis.findings &&
+                          Array.isArray(document.analysis.findings) && (
+                            <div className="mb-2">
+                              <span className="text-xs font-medium text-muted-foreground">
+                                Findings:
+                              </span>
+                              <ul className="text-xs mt-1 pl-4 list-disc">
+                                {document.analysis.findings.map(
+                                  (finding, idx) => (
+                                    <li key={idx}>{finding}</li>
+                                  ),
+                                )}
+                              </ul>
+                            </div>
+                          )}
                       </div>
                     )}
-
-                    {document.analysis.potential_diagnoses &&
-                      Array.isArray(document.analysis.potential_diagnoses) && (
-                        <div className="mb-2">
-                          <span className="text-xs font-medium text-muted-foreground">
-                            Potential Diagnoses:
-                          </span>
-                          <ul className="text-xs mt-1 pl-4 list-disc">
-                            {document.analysis.potential_diagnoses.map(
-                              (item, idx) => (
-                                <li key={idx}>{item}</li>
-                              ),
-                            )}
-                          </ul>
-                        </div>
-                      )}
-
-                    {document.analysis.confidence && (
-                      <div className="text-xs font-medium">
-                        Confidence:{' '}
-                        {typeof document.analysis.confidence === 'number'
-                          ? `${Math.round(document.analysis.confidence * 100)}%`
-                          : document.analysis.confidence}
-                      </div>
-                    )}
-
-                    {/* Fallback for any other fields */}
-                    {Object.entries(document.analysis)
-                      .filter(
-                        ([key]) =>
-                          ![
-                            'findings',
-                            'abnormalities',
-                            'abnormal_values',
-                            'key_values',
-                            'interpretation',
-                            'potential_diagnoses',
-                            'confidence',
-                            'analyzed_at',
-                          ].includes(key),
-                      )
-                      .map(([key, value]) => {
-                        if (typeof value === 'object' && value !== null)
-                          return null
-                        return (
-                          <div key={key} className="mb-2">
-                            <span className="text-xs font-medium text-muted-foreground capitalize">
-                              {key.replace(/_/g, ' ')}:
-                            </span>
-                            <span className="text-xs ml-1">
-                              {String(value)}
-                            </span>
-                          </div>
-                        )
-                      })}
                   </div>
                 </>
               )}
@@ -414,128 +445,366 @@ export function DocumentList({
         ))}
       </div>
 
-      {/* Document preview dialog */}
       <Dialog
         open={selectedDocument !== null}
         onOpenChange={(open) => !open && setSelectedDocument(null)}
       >
         {selectedDocument && (
-          <DialogContent className="max-w-3xl">
-            <DialogHeader>
-              <DialogTitle>{selectedDocument.name}</DialogTitle>
-              <DialogDescription>
-                {selectedDocument.type.replace('_', ' ')} uploaded{' '}
-                {formatDistanceToNow(new Date(selectedDocument.uploaded_at), {
-                  addSuffix: true,
-                })}
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="flex justify-center my-4">
-              {selectedDocument.content_type.includes('image') ? (
-                <img
-                  src={selectedDocument.file_url}
-                  alt={selectedDocument.name}
-                  className="max-h-[60vh] max-w-full object-contain rounded border"
-                />
-              ) : (
-                <div className="flex flex-col items-center">
-                  <FileText className="h-20 w-20 text-primary/70" />
+          <DialogContent
+            className="!max-w-[98vw] !w-[98vw] sm:!max-w-[98vw] md:!max-w-[98vw] lg:!max-w-[98vw] xl:!max-w-[98vw] max-h-[95vh] overflow-hidden flex flex-col p-0"
+            style={{ width: '98vw', maxWidth: '98vw' }}
+          >
+            <div className="sticky top-0 z-10 bg-background border-b">
+              <DialogHeader className="p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 shrink-0">
+                      {getDocumentIcon(selectedDocument.content_type)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <DialogTitle className="text-base font-medium truncate">
+                        {selectedDocument.name}
+                      </DialogTitle>
+                      <DialogDescription className="flex flex-wrap items-center gap-2 mt-1">
+                        <Badge
+                          variant="outline"
+                          className="bg-primary/5 text-primary text-xs px-1.5 py-0"
+                        >
+                          {selectedDocument.type
+                            .replace('_', ' ')
+                            .toUpperCase()}
+                        </Badge>
+                        <span className="flex items-center text-xs">
+                          <Clock className="mr-1 h-3 w-3" />
+                          {formatDistanceToNow(
+                            new Date(selectedDocument.uploaded_at),
+                            {
+                              addSuffix: true,
+                            },
+                          )}
+                        </span>
+                        <span className="text-xs">
+                          {formatFileSize(selectedDocument.size)}
+                        </span>
+                      </DialogDescription>
+                    </div>
+                  </div>
                   <Button
                     variant="outline"
-                    className="mt-4"
+                    size="sm"
+                    className="shrink-0 h-8 text-xs"
                     onClick={() => openDocument(selectedDocument)}
                   >
-                    <ExternalLink className="mr-2 h-4 w-4" />
+                    <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
                     Open Document
                   </Button>
                 </div>
-              )}
+              </DialogHeader>
             </div>
 
-            {selectedDocument.status === 'analyzed' &&
-              selectedDocument.analysis && (
-                <div className="mt-4 border rounded-md p-4 bg-muted/30">
-                  <h3 className="font-medium mb-2">Analysis Results</h3>
-                  <div className="space-y-2">
-                    {Object.entries(selectedDocument.analysis).map(
-                      ([key, value]) => {
-                        if (key === 'confidence') {
-                          return (
-                            <div
-                              key={key}
-                              className="flex items-center justify-between"
-                            >
-                              <span className="text-sm font-medium capitalize">
-                                {key}:
-                              </span>
-                              <Badge
-                                variant="outline"
-                                className="bg-primary/10"
-                              >
-                                {((value as number) * 100).toFixed(0)}%
-                              </Badge>
-                            </div>
-                          )
-                        }
-
-                        if (Array.isArray(value)) {
-                          return (
-                            <div key={key}>
-                              <span className="text-sm font-medium capitalize">
-                                {key.replace('_', ' ')}:
-                              </span>
-                              <ul className="mt-1 ml-5 text-sm space-y-1">
-                                {value.map((item, i) => (
-                                  <li key={i} className="list-disc">
-                                    {item}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )
-                        }
-
-                        if (typeof value === 'object' && value !== null) {
-                          return (
-                            <div key={key}>
-                              <span className="text-sm font-medium capitalize">
-                                {key.replace('_', ' ')}:
-                              </span>
-                              <div className="ml-5 mt-1">
-                                {Object.entries(value).map(
-                                  ([subKey, subValue]) => (
-                                    <div key={subKey} className="text-sm">
-                                      <span className="font-medium">
-                                        {subKey}:
-                                      </span>{' '}
-                                      {String(subValue)}
-                                    </div>
-                                  ),
-                                )}
-                              </div>
-                            </div>
-                          )
-                        }
-
-                        return (
-                          <div key={key} className="text-sm">
-                            <span className="font-medium capitalize">
-                              {key.replace('_', ' ')}:
-                            </span>{' '}
-                            {String(value)}
-                          </div>
-                        )
-                      },
-                    )}
+            <div className="overflow-y-auto flex-1 px-12 py-6">
+              {selectedDocument.content_type.includes('image') ? (
+                <div className="mb-6 flex justify-center">
+                  <div className="relative rounded-lg border overflow-hidden max-h-[40vh] flex items-center justify-center bg-muted/30 shadow-sm">
+                    <img
+                      src={selectedDocument.file_url || '/placeholder.svg'}
+                      alt={selectedDocument.name}
+                      className="max-h-[40vh] max-w-full object-contain"
+                    />
+                    <Button
+                      size="icon"
+                      variant="secondary"
+                      className="absolute bottom-2 right-2 opacity-80 hover:opacity-100 h-7 w-7"
+                      onClick={() =>
+                        window.open(selectedDocument.file_url, '_blank')
+                      }
+                    >
+                      <Maximize2 className="h-3.5 w-3.5" />
+                    </Button>
                   </div>
                 </div>
+              ) : (
+                <div className="mb-6 flex flex-col items-center">
+                  <div className="bg-muted/30 p-6 rounded-full">
+                    <FileText className="h-16 w-16 text-primary/70" />
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3 text-xs h-8"
+                    onClick={() =>
+                      window.open(selectedDocument.file_url, '_blank')
+                    }
+                  >
+                    <Download className="mr-1.5 h-3.5 w-3.5" />
+                    Download Document
+                  </Button>
+                </div>
               )}
+
+              {selectedDocument.status === 'analyzed' &&
+                selectedDocument.analysis && (
+                  <div className="rounded-lg overflow-hidden shadow-sm border">
+                    <div className="p-4 bg-muted/50 border-b">
+                      <div className="flex flex-col sm:flex-row justify-between gap-2 items-start sm:items-center">
+                        <h3 className="font-medium flex items-center text-sm">
+                          <BarChart3 className="mr-2 h-4 w-4 text-primary" />
+                          Document Analysis
+                        </h3>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {selectedDocument.analysis.confidence && (
+                            <Badge
+                              variant="outline"
+                              className="bg-primary/10 text-xs px-2 py-0 h-5"
+                            >
+                              Confidence:{' '}
+                              {(
+                                (selectedDocument.analysis
+                                  .confidence as number) * 100
+                              ).toFixed(0)}
+                              %
+                            </Badge>
+                          )}
+
+                          {selectedDocument.analysis.method && (
+                            <Badge
+                              variant="outline"
+                              className="bg-secondary/10 text-xs px-2 py-0 h-5"
+                            >
+                              Method: {String(selectedDocument.analysis.method)}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+
+                      {selectedDocument.analysis.analyzed_at && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Analyzed on{' '}
+                          {new Date(
+                            selectedDocument.analysis.analyzed_at,
+                          ).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+
+                    {selectedDocument.analysis.pages &&
+                      Array.isArray(selectedDocument.analysis.pages) &&
+                      selectedDocument.analysis.pages.length > 0 && (
+                        <Accordion
+                          type="multiple"
+                          className="bg-white divide-y"
+                          defaultValue={selectedDocument.analysis.pages
+                            .map((_, i) => `dialog-page-${i}`)
+                            .slice(0, 1)}
+                        >
+                          {selectedDocument.analysis.pages.map(
+                            (page, index) => (
+                              <AccordionItem
+                                key={index}
+                                value={`dialog-page-${index}`}
+                                className="border-0"
+                              >
+                                <AccordionTrigger className="px-4 py-3 hover:no-underline transition-colors bg-muted/10 hover:bg-muted/20 group">
+                                  <div className="flex items-center gap-2 w-full">
+                                    <div className="bg-primary/10 rounded-full h-6 w-6 flex items-center justify-center text-primary font-medium text-xs">
+                                      {page.page_number}
+                                    </div>
+                                    <span className="font-medium text-xs">
+                                      Page {page.page_number} Analysis
+                                    </span>
+                                    <div className="flex items-center ml-auto gap-2">
+                                      {page.abnormal_values &&
+                                        page.abnormal_values.length > 0 && (
+                                          <Badge
+                                            variant="outline"
+                                            className="bg-amber-50 text-amber-700 group-hover:bg-amber-100/80 text-xs px-1.5 py-0 h-5"
+                                          >
+                                            {page.abnormal_values.length}{' '}
+                                            Abnormal
+                                          </Badge>
+                                        )}
+                                      {page.confidence && (
+                                        <Badge
+                                          variant="outline"
+                                          className="bg-primary/10 group-hover:bg-primary/20 text-xs px-1.5 py-0 h-5"
+                                        >
+                                          {(
+                                            (page.confidence as number) * 100
+                                          ).toFixed(0)}
+                                          %
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                </AccordionTrigger>
+
+                                <AccordionContent className="px-0 data-[state=open]:animate-accordion-down data-[state=closed]:animate-accordion-up">
+                                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 p-8">
+                                    <div className="space-y-6">
+                                      {page.findings &&
+                                        Array.isArray(page.findings) && (
+                                          <div className="bg-muted/5 p-6 rounded-md border border-muted/50">
+                                            <h4 className="text-xs font-medium mb-3 text-primary flex items-center">
+                                              <span className="bg-primary/10 rounded-full w-5 h-5 inline-flex items-center justify-center mr-1.5 text-xs text-primary">
+                                                1
+                                              </span>
+                                              Key Findings
+                                            </h4>
+                                            <ul className="ml-5 text-xs space-y-2">
+                                              {page.findings.map(
+                                                (item: string, i: number) => (
+                                                  <li
+                                                    key={i}
+                                                    className="list-disc"
+                                                  >
+                                                    {item}
+                                                  </li>
+                                                ),
+                                              )}
+                                            </ul>
+                                          </div>
+                                        )}
+
+                                      {page.interpretation && (
+                                        <div className="bg-muted/5 p-6 rounded-md border border-muted/50">
+                                          <h4 className="text-xs font-medium mb-3 text-primary flex items-center">
+                                            <span className="bg-primary/10 rounded-full w-5 h-5 inline-flex items-center justify-center mr-1.5 text-xs text-primary">
+                                              2
+                                            </span>
+                                            Interpretation
+                                          </h4>
+                                          <p className="text-xs leading-relaxed">
+                                            {page.interpretation}
+                                          </p>
+
+                                          {page.abnormal_values &&
+                                            Array.isArray(
+                                              page.abnormal_values,
+                                            ) &&
+                                            page.abnormal_values.length > 0 && (
+                                              <div className="mt-4 pt-4 border-t border-muted/30">
+                                                <h5 className="text-xs font-medium mb-2 text-amber-700 flex items-center">
+                                                  <AlertCircle className="h-3.5 w-3.5 mr-1.5" />
+                                                  Abnormal Values
+                                                </h5>
+                                                <div className="flex flex-wrap gap-2">
+                                                  {page.abnormal_values.map(
+                                                    (
+                                                      item: string,
+                                                      i: number,
+                                                    ) => {
+                                                      const value =
+                                                        page.key_values &&
+                                                        page.key_values[item]
+                                                          ? `: ${page.key_values[item]}`
+                                                          : ''
+
+                                                      return (
+                                                        <Badge
+                                                          key={i}
+                                                          variant="outline"
+                                                          className="bg-amber-50 text-amber-700 border-amber-200 px-2 py-0.5 text-xs hover:bg-amber-100 transition-colors"
+                                                        >
+                                                          {item}
+                                                          {value}
+                                                        </Badge>
+                                                      )
+                                                    },
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {page.key_values &&
+                                      typeof page.key_values === 'object' &&
+                                      Object.keys(page.key_values).length >
+                                        0 && (
+                                        <div className="bg-muted/5 p-6 rounded-md border border-muted/50">
+                                          <h4 className="text-xs font-medium mb-3 border-b pb-2 flex items-center">
+                                            <span className="bg-primary/10 rounded-full w-5 h-5 inline-flex items-center justify-center mr-1.5 text-xs text-primary">
+                                              3
+                                            </span>
+                                            Laboratory Values
+                                          </h4>
+                                          <div className="grid grid-cols-1 gap-y-3 max-h-[60vh] overflow-y-auto pr-4">
+                                            {Object.entries(
+                                              page.key_values,
+                                            ).map(([key, value]) => {
+                                              const isAbnormal =
+                                                page.abnormal_values &&
+                                                Array.isArray(
+                                                  page.abnormal_values,
+                                                ) &&
+                                                page.abnormal_values.includes(
+                                                  key,
+                                                )
+
+                                              return (
+                                                <div
+                                                  key={key}
+                                                  className={`text-xs flex justify-between items-center px-5 py-2.5 rounded-sm ${
+                                                    isAbnormal
+                                                      ? 'bg-amber-50 border border-amber-100'
+                                                      : 'hover:bg-muted/20 transition-colors'
+                                                  }`}
+                                                >
+                                                  <span
+                                                    className={`font-medium ${isAbnormal ? 'text-amber-700' : ''}`}
+                                                  >
+                                                    {key}
+                                                  </span>
+                                                  <span
+                                                    className={`${isAbnormal ? 'text-amber-700 font-medium' : ''}`}
+                                                  >
+                                                    {String(value)}
+                                                  </span>
+                                                </div>
+                                              )
+                                            })}
+                                          </div>
+                                        </div>
+                                      )}
+                                  </div>
+
+                                  <div className="px-4 pb-3 pt-2 text-xs text-muted-foreground flex items-center gap-3 border-t mt-2">
+                                    {page.model && (
+                                      <span className="flex items-center gap-1">
+                                        <span className="font-medium">
+                                          Model:
+                                        </span>{' '}
+                                        {page.model}
+                                      </span>
+                                    )}
+                                    {page.method && (
+                                      <span className="flex items-center gap-1">
+                                        <span className="font-medium">
+                                          Method:
+                                        </span>{' '}
+                                        {page.method}
+                                      </span>
+                                    )}
+                                  </div>
+                                </AccordionContent>
+                              </AccordionItem>
+                            ),
+                          )}
+                        </Accordion>
+                      )}
+
+                    {(!selectedDocument.analysis.pages ||
+                      !Array.isArray(selectedDocument.analysis.pages)) && (
+                      <div className="space-y-3 p-3 bg-white text-xs"></div>
+                    )}
+                  </div>
+                )}
+            </div>
           </DialogContent>
         )}
       </Dialog>
 
-      {/* Delete confirmation dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
