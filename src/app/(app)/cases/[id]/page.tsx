@@ -1,6 +1,6 @@
 'use client'
 
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { useState } from 'react'
 import { DashboardShell } from '@/components/app/dashboard/shell'
 import { Button } from '@/components/ui/button'
@@ -60,6 +60,9 @@ import {
   BarChart3,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
+
+import { DocumentUpload } from '@/components/app/documents/document-upload'
+import { DocumentList } from '@/components/app/documents/document-list'
 
 interface Vitals {
   blood_pressure?: string
@@ -153,9 +156,9 @@ function useWorkflows() {
 
 export default function CaseDetailsPage() {
   const params = useParams()
-  const router = useRouter()
   const caseId = params.id as string
   const [activeTab, setActiveTab] = useState('overview')
+  const [documentRefreshTrigger, setDocumentRefreshTrigger] = useState(0)
 
   const { data: caseData, isLoading: caseLoading } = useCase(caseId)
   const { data: results, isLoading: resultsLoading } = useCaseResults(caseId)
@@ -168,10 +171,13 @@ export default function CaseDetailsPage() {
   const handleRunWorkflow = async (workflowId: string) => {
     try {
       await api.post(`/workflows/${workflowId}/start/${caseId}`)
-      router.push(`/workflows/${workflowId}/run?caseId=${caseId}`)
     } catch (error) {
       console.error('Error starting workflow:', error)
     }
+  }
+
+  const handleDocumentUploadComplete = () => {
+    setDocumentRefreshTrigger((prev) => prev + 1)
   }
 
   if (caseLoading) {
@@ -316,8 +322,9 @@ export default function CaseDetailsPage() {
         onValueChange={setActiveTab}
         className="space-y-4"
       >
-        <TabsList className="grid grid-cols-3 w-full sm:w-auto">
+        <TabsList className="grid grid-cols-4 w-full sm:w-auto">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="documents">Documents</TabsTrigger>
           <TabsTrigger value="diagnosis" disabled={!hasResults}>
             Diagnosis
           </TabsTrigger>
@@ -1029,6 +1036,33 @@ export default function CaseDetailsPage() {
               </Card>
             </>
           )}
+        </TabsContent>
+
+        <TabsContent value="documents" className="space-y-6">
+          <div className="grid gap-6 md:grid-cols-3">
+            <div className="md:col-span-1">
+              <h2 className="text-lg font-semibold mb-3">Upload Document</h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                Upload medical documents related to this case. Supported
+                formats: PDF, JPG, PNG. Max file size: 10MB.
+              </p>
+              <DocumentUpload
+                caseId={caseId}
+                onUploadComplete={handleDocumentUploadComplete}
+              />
+            </div>
+            <div className="md:col-span-2">
+              <h2 className="text-lg font-semibold mb-3">Case Documents</h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                View and manage documents uploaded for this case. Documents will
+                be automatically processed for AI analysis.
+              </p>
+              <DocumentList
+                caseId={caseId}
+                refreshTrigger={documentRefreshTrigger}
+              />
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
     </DashboardShell>
